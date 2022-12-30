@@ -1,0 +1,6 @@
+{
+  "files.associations": {
+    "sqlite3expert.h": "c",
+    "stdio.h": "c"
+  }
+}
