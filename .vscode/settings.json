@@ -1,6 +1,9 @@
 {
   "files.associations": {
     "sqlite3expert.h": "c",
-    "stdio.h": "c"
+    "stdio.h": "c",
+    "tuple": "c",
+    "*.in": "cpp",
+    "random": "c"
   }
 }
