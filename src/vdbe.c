@@ -704,6 +704,15 @@ static const char *vdbeMemTypeName(Mem *pMem){
   return azTypes[sqlite3_value_type(pMem)-1];
 }
 
+
+int sqlite3VdbeExecJIT(
+  Vdbe *p
+) {
+  Op *aOp = p->aOp;          /* Copy of p->aOp */
+  Op *pOp = aOp;             /* Current operation */
+  return 0;
+}
+
 /*
 ** Execute as much of a VDBE program as we can.
 ** This is the core of sqlite3_step().  
