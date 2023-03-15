@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
 ** 2003 September 6
 **
@@ -490,6 +493,7 @@ struct Vdbe {
   u32 expmask;            /* Binding to these vars invalidates VM */
   SubProgram *pProgram;   /* Linked list of all sub-programs used by VM */
   AuxData *pAuxData;      /* Linked list of auxdata allocations */
+  void *jitCode;          /* Function code used for jit compilation*/
 #ifdef SQLITE_ENABLE_STMT_SCANSTATUS
   int nScan;              /* Entries in aScan[] */
   ScanStatus *aScan;      /* Scan definitions for sqlite3_stmt_scanstatus() */
@@ -575,6 +579,7 @@ int sqlite2BtreeKeyCompare(BtCursor *, const void *, int, int, int *);
 int sqlite3VdbeIdxKeyCompare(sqlite3*,VdbeCursor*,UnpackedRecord*,int*);
 int sqlite3VdbeIdxRowid(sqlite3*, BtCursor*, i64*);
 int sqlite3VdbeExec(Vdbe*);
+int sqlite3VdbeExecJIT(Vdbe*);
 #if !defined(SQLITE_OMIT_EXPLAIN) || defined(SQLITE_ENABLE_BYTECODE_VTAB)
 int sqlite3VdbeNextOpcode(Vdbe*,Mem*,int,int*,int*,Op**);
 char *sqlite3VdbeDisplayP4(sqlite3*,Op*);
@@ -706,3 +711,6 @@ int sqlite3VdbeCheckFk(Vdbe *, int);
 #endif
 
 #endif /* !defined(SQLITE_VDBEINT_H) */
+#ifdef __cplusplus
+}
+#endif

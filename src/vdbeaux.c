@@ -2608,7 +2608,7 @@ void sqlite3VdbeMakeReady(
     }
   }
   p->expired = 0;
-
+  p->jitCode = NULL;
   /* Memory for registers, parameters, cursor, etc, is allocated in one or two
   ** passes.  On the first pass, we try to reuse unused memory at the 
   ** end of the opcode array.  If we are unable to satisfy all memory

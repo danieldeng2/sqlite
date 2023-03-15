@@ -705,13 +705,6 @@ static const char *vdbeMemTypeName(Mem *pMem){
 }
 
 
-int sqlite3VdbeExecJIT(
-  Vdbe *p
-) {
-  Op *aOp = p->aOp;          /* Copy of p->aOp */
-  Op *pOp = aOp;             /* Current operation */
-  return 0;
-}
 
 /*
 ** Execute as much of a VDBE program as we can.

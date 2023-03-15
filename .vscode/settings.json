@@ -39,7 +39,8 @@
     "type_traits": "cpp",
     "typeinfo": "cpp",
     "utility": "cpp",
-    "functional": "cpp"
+    "functional": "cpp",
+    "set": "cpp"
   },
   "C_Cpp.default.configurationProvider": "ms-vscode.makefile-tools",
   "C_Cpp.errorSquiggles": "enabledIfIncludesResolve"

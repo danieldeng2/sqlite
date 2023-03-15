@@ -1,10 +1,10 @@
 #pragma once
 
-#include <functional>
 #include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <stack>
 #include <string>
 #include <unordered_map>
@@ -26,6 +26,16 @@ class Local {
 
  private:
   Local(CodeGenerator& cg_) : cg(cg_) {}
+  CodeGenerator& cg;
+  friend CodeGenerator;
+};
+
+class RefNull {
+ public:
+  void operator()(uint8_t type);
+
+ private:
+  RefNull(CodeGenerator& cg_) : cg(cg_) {}
   CodeGenerator& cg;
   friend CodeGenerator;
 };
@@ -114,6 +124,16 @@ class F32 {
   friend CodeGenerator;
 };
 
+class FuncRef {
+ public:
+  operator uint8_t();
+
+ private:
+  FuncRef(CodeGenerator& cg_) : cg(cg_) {}
+  CodeGenerator& cg;
+  friend CodeGenerator;
+};
+
 class V128 {
  public:
   operator uint8_t();
@@ -189,6 +209,26 @@ class V128 {
   friend CodeGenerator;
 };
 
+class Table {
+ public:
+  Table& operator()(uint32_t min, uint8_t type);
+  Table& import_(std::string, std::string);
+  void grow(uint32_t idx);
+  void init(uint32_t dst, uint32_t src);
+
+ private:
+  Table(CodeGenerator& cg_) : cg(cg_) {}
+  CodeGenerator& cg;
+  uint32_t min = 0;
+  uint8_t type = 0;
+  bool is_shared = false;
+  std::string a_string = "";
+  std::string b_string = "";
+  bool is_import() const { return a_string.size() && b_string.size(); }
+  bool is_export() const { return a_string.size() && !b_string.size(); }
+  friend CodeGenerator;
+};
+
 class Memory {
  public:
   Memory& operator()(uint32_t min);
@@ -217,8 +257,7 @@ struct Function {
            std::vector<uint8_t> output_types_)
       : input_types(input_types_), output_types(output_types_) {}
   Function(std::vector<uint8_t> input_types_,
-           std::vector<uint8_t> output_types_,
-           std::function<void()> body_)
+           std::vector<uint8_t> output_types_, std::function<void()> body_)
       : input_types(input_types_), output_types(output_types_), body(body_) {}
   std::vector<uint8_t> input_types;
   std::vector<uint8_t> output_types;
@@ -233,10 +272,15 @@ struct Function {
 struct CodeGenerator {
   // API
   Local local;
+  RefNull refNull;
+
   I32 i32;
   F32 f32;
   V128 v128;
+  FuncRef funcRef;
+
   Memory memory;
+  Table table;
   uint8_t void_ = 0x40;
 
   void nop();
@@ -251,6 +295,9 @@ struct CodeGenerator {
 
   void export_(uint32_t fn_idx, std::string name);
 
+  void start(uint32_t fn_idx);
+  void elem(uint32_t fn_idx);
+
   // returns function index
   uint32_t function(std::vector<uint8_t> input_types,
                     std::vector<uint8_t> output_types,
@@ -261,11 +308,20 @@ struct CodeGenerator {
   // Implementation
 
   CodeGenerator()
-      : local(*this), i32(*this), f32(*this), v128(*this), memory(*this) {}
+      : local(*this),
+        refNull(*this),
+        i32(*this),
+        f32(*this),
+        v128(*this),
+        funcRef(*this),
+        memory(*this),
+        table(*this) {}
   CodeGenerator(const CodeGenerator&) = delete;
   CodeGenerator(CodeGenerator&&) = delete;
 
   std::vector<Function> functions_;
+  std::vector<uint32_t> elem_functions_;
+  uint32_t start_function_ = -1;
   std::unordered_map<uint32_t, std::string> exported_functions_;
   Function* cur_function_ = nullptr;
   // cur_bytes_ is used as a temporary storage
@@ -353,9 +409,12 @@ struct CodeGenerator {
   }
 };
 
-inline int Local::operator()(uint8_t type) {
-  return cg.declare_local(type);
+inline void RefNull::operator()(uint8_t type) {
+  cg.emit(0xd0);  // RefNull OpCode
+  cg.emit(type);
 };
+
+inline int Local::operator()(uint8_t type) { return cg.declare_local(type); };
 
 inline void Local::set(int idx) {
   auto t = cg.pop();
@@ -400,9 +459,7 @@ inline void Local::tee(int idx) {
   cg.push(expected_type);
 }
 
-inline I32::operator uint8_t() {
-  return 0x7f;
-}
+inline I32::operator uint8_t() { return 0x7f; }
 
 inline void I32::const_(int32_t i) {
   cg.emit(0x41);
@@ -410,9 +467,9 @@ inline void I32::const_(int32_t i) {
   cg.push(cg.i32);
 }
 
-inline F32::operator uint8_t() {
-  return 0x7d;
-}
+inline F32::operator uint8_t() { return 0x7d; }
+
+inline FuncRef::operator uint8_t() { return 0x70; }
 
 inline void F32::const_(float f) {
   cg.emit(0x43);
@@ -424,9 +481,7 @@ inline void F32::const_(float f) {
   cg.push(cg.f32);
 }
 
-inline V128::operator uint8_t() {
-  return 0x7b;
-}
+inline V128::operator uint8_t() { return 0x7b; }
 
 #define UNARY_OP(classname, op, opcode, in_type, out_type) \
   inline void classname::op() {                            \
@@ -734,9 +789,34 @@ inline void Memory::grow() {
   cg.emit(0x00);
 }
 
-inline void CodeGenerator::nop() {
-  emit(0x01);
+inline Table& Table::operator()(uint32_t min_, uint8_t type_) {
+  assert(min == 0 && type == 0);
+  min = min_;
+  type = type_;
+  return *this;
 }
+
+inline Table& Table::import_(std::string a, std::string b) {
+  assert(!(is_import() || is_export()) && "already set");
+  a_string = a;
+  b_string = b;
+  return *this;
+}
+
+inline void Table::grow(uint32_t idx) {
+  cg.emit(0xfc);  // FC extensions opcode
+  cg.emit(0x0f);  // tableGrow opcode
+  cg.emit(cg.encode_unsigned(idx));
+}
+
+inline void Table::init(uint32_t dst, uint32_t src) {
+  cg.emit(0xfc);  // FC extensions opcode
+  cg.emit(0x0c);  // tableinit opcode
+  cg.emit(cg.encode_unsigned(dst));
+  cg.emit(cg.encode_unsigned(src));
+}
+
+inline void CodeGenerator::nop() { emit(0x01); }
 inline void CodeGenerator::block(uint8_t type) {
   emit(0x02);
   emit(type);
@@ -752,9 +832,7 @@ inline void CodeGenerator::if_(uint8_t type) {
   emit(0x04);
   emit(type);
 }
-inline void CodeGenerator::else_() {
-  emit(0x05);
-}
+inline void CodeGenerator::else_() { emit(0x05); }
 inline void CodeGenerator::br(uint32_t labelidx) {
   emit(0x0c);
   emit(encode_unsigned(labelidx));
@@ -765,9 +843,7 @@ inline void CodeGenerator::br_if(uint32_t labelidx) {
   emit(0x0d);
   emit(encode_unsigned(labelidx));
 }
-inline void CodeGenerator::end() {
-  emit(0x0b);
-}
+inline void CodeGenerator::end() { emit(0x0b); }
 inline void CodeGenerator::call(uint32_t fn_idx) {
   assert(fn_idx < functions_.size() && "function index does not exist");
   emit(0x10);
@@ -777,6 +853,12 @@ inline void CodeGenerator::call(uint32_t fn_idx) {
 inline void CodeGenerator::export_(uint32_t fn, std::string name) {
   exported_functions_[fn] = name;
 }
+
+inline void CodeGenerator::elem(uint32_t fn) {
+  elem_functions_.emplace_back(fn);
+}
+
+inline void CodeGenerator::start(uint32_t fn) { start_function_ = fn; }
 
 inline uint32_t CodeGenerator::function(std::vector<uint8_t> input_types,
                                         std::vector<uint8_t> output_types,
@@ -811,28 +893,45 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
   concat(emitted_bytes, encode_unsigned(type_section_bytes.size()));
   concat(emitted_bytes, type_section_bytes);
 
-	std::vector<uint8_t> import_section_bytes;
-  if (memory.is_import()) {
-		concat(import_section_bytes, encode_unsigned(1)); // 1 import
-    concat(import_section_bytes, encode_string(memory.a_string));
-    concat(import_section_bytes, encode_string(memory.b_string));
-		import_section_bytes.emplace_back(0x2); // memory flag
-    if (memory.min && memory.max) {
-			if (memory.is_shared) {
-				import_section_bytes.emplace_back(0x3);
-			} else {
-        import_section_bytes.emplace_back(0x01);
-			}
-      concat(import_section_bytes, encode_unsigned(memory.min));
-      concat(import_section_bytes, encode_unsigned(memory.max));
-		} else {
-			assert(!memory.is_shared && "shared memory must have a max size");
-      concat(import_section_bytes, encode_unsigned(memory.min));
-		}
-    emitted_bytes.emplace_back(0x2);
+  std::vector<uint8_t> import_section_bytes;
+  int numImports = 0;
+  numImports += memory.is_import() ? 1 : 0;
+  numImports += table.is_import() ? 1 : 0;
+  if (numImports != 0) {
+    concat(import_section_bytes, encode_unsigned(numImports));
+
+    if (memory.is_import()) {
+      concat(import_section_bytes, encode_string(memory.a_string));
+      concat(import_section_bytes, encode_string(memory.b_string));
+      import_section_bytes.emplace_back(0x2);  // memory flag
+      if (memory.min && memory.max) {
+        if (memory.is_shared) {
+          import_section_bytes.emplace_back(0x3);
+        } else {
+          import_section_bytes.emplace_back(0x01);
+        }
+        concat(import_section_bytes, encode_unsigned(memory.min));
+        concat(import_section_bytes, encode_unsigned(memory.max));
+      } else {
+        assert(!memory.is_shared && "shared memory must have a max size");
+        import_section_bytes.emplace_back(0x0);  // Default flag
+        concat(import_section_bytes, encode_unsigned(memory.min));
+      }
+    }
+
+    if (table.is_import()) {
+      concat(import_section_bytes, encode_string(table.a_string));
+      concat(import_section_bytes, encode_string(table.b_string));
+      import_section_bytes.emplace_back(0x01);  // table flag
+      import_section_bytes.emplace_back(table.type);
+      import_section_bytes.emplace_back(0x0);  // Default flag
+      concat(import_section_bytes, encode_unsigned(table.min));
+    }
+
+    emitted_bytes.emplace_back(0x2);  // Import section id
     concat(emitted_bytes, encode_unsigned(import_section_bytes.size()));
     concat(emitted_bytes, import_section_bytes);
-	}
+  }
 
   std::vector<uint8_t> function_section_bytes;
   concat(function_section_bytes, encode_unsigned(functions_.size()));
@@ -855,7 +954,7 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
       concat(memory_section_bytes, encode_unsigned(memory.min));
       concat(memory_section_bytes, encode_unsigned(memory.max));
     } else {
-			assert(!memory.is_shared && "shared memory must have a max size");
+      assert(!memory.is_shared && "shared memory must have a max size");
       memory_section_bytes.emplace_back(0x00);
       concat(memory_section_bytes, encode_unsigned(memory.min));
     }
@@ -865,7 +964,6 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
   }
 
   std::vector<uint8_t> export_section_bytes;
-
   auto num_exports = exported_functions_.size() + memory.is_export();
   concat(export_section_bytes, encode_unsigned(num_exports));
   if (memory.is_export()) {
@@ -881,6 +979,28 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
   emitted_bytes.emplace_back(0x7);
   concat(emitted_bytes, encode_unsigned(export_section_bytes.size()));
   concat(emitted_bytes, export_section_bytes);
+
+  std::vector<uint8_t> start_section_bytes;
+  if (start_function_ != -1) {
+    concat(start_section_bytes, encode_unsigned(start_function_));
+    emitted_bytes.emplace_back(0x8);
+    concat(emitted_bytes, encode_unsigned(start_section_bytes.size()));
+    concat(emitted_bytes, start_section_bytes);
+  }
+
+  std::vector<uint8_t> elems_section_bytes;
+  if (!elem_functions_.empty()) {
+    concat(elems_section_bytes, encode_unsigned(1));
+    elems_section_bytes.emplace_back(1U);    // Passive
+    elems_section_bytes.emplace_back(0x00);  // elemkind: funcref
+    concat(elems_section_bytes, encode_unsigned(elem_functions_.size()));
+    for (auto idx : elem_functions_)
+      concat(elems_section_bytes, encode_unsigned(idx));
+
+    emitted_bytes.emplace_back(0x09);  // Element section
+    concat(emitted_bytes, encode_unsigned(elems_section_bytes.size()));
+    concat(emitted_bytes, elems_section_bytes);
+  }
 
   std::vector<uint8_t> code_section_bytes;
   concat(code_section_bytes, encode_unsigned(functions_.size()));

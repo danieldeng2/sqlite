@@ -739,7 +739,11 @@ static int sqlite3Step(Vdbe *p){
 #endif /* SQLITE_OMIT_EXPLAIN */
   {
     db->nVdbeExec++;
+#ifdef SQLITE_JIT
+    rc = sqlite3VdbeExecJIT(p);
+#else
     rc = sqlite3VdbeExec(p);
+#endif
     db->nVdbeExec--;
   }
 
