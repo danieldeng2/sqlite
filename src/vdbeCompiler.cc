@@ -50,10 +50,10 @@ extern "C" {
 int sqlite3VdbeExecJIT(Vdbe *p) {
   if (p->jitCode == NULL) {
     jitCandidates.insert(p);
-    fprintf(stdout, "appending to jit candidates");
+    fprintf(stdout, "appending to jit candidates\n");
   } else {
     int additionResult = ((jitOp)p->jitCode)(15, 12);
-    fprintf(stdout, "additionResult: %d", additionResult);
+    fprintf(stdout, "additionResult: %d\n", additionResult);
   }
   return sqlite3VdbeExec(p);
 
@@ -113,4 +113,5 @@ WasmModule *jitModule() {
 
 uint8_t *moduleData(WasmModule *mod) { return mod->data.data(); }
 size_t moduleSize(WasmModule *mod) { return mod->data.size(); }
+void freeModule(WasmModule* mod) { delete mod; }
 }
