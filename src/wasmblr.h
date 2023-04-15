@@ -90,6 +90,19 @@ class I32 {
   friend CodeGenerator;
 };
 
+class I64 {
+ public:
+  operator uint8_t();
+  void const_(int64_t i);
+  void add();
+  void store(uint32_t alignment = 3, uint32_t offset = 0);
+
+ private:
+  I64(CodeGenerator& cg_) : cg(cg_) {}
+  CodeGenerator& cg;
+  friend CodeGenerator;
+};
+
 class F32 {
  public:
   operator uint8_t();
@@ -274,6 +287,7 @@ struct CodeGenerator {
   Local local;
   RefNull refNull;
 
+  I64 _i64;
   I32 i32;
   F32 f32;
   V128 v128;
@@ -311,6 +325,7 @@ struct CodeGenerator {
       : local(*this),
         refNull(*this),
         i32(*this),
+        _i64(*this),
         f32(*this),
         v128(*this),
         funcRef(*this),
@@ -461,10 +476,18 @@ inline void Local::tee(int idx) {
 
 inline I32::operator uint8_t() { return 0x7f; }
 
+inline I64::operator uint8_t() { return 0x7e; }
+
 inline void I32::const_(int32_t i) {
   cg.emit(0x41);
   cg.emit(cg.encode_signed(i));
   cg.push(cg.i32);
+}
+
+inline void I64::const_(int64_t i) {
+  cg.emit(0x42);
+  cg.emit(cg.encode_signed(i));
+  cg.push(cg._i64);
 }
 
 inline F32::operator uint8_t() { return 0x7d; }
@@ -556,6 +579,9 @@ LOAD_OP(I32, load16_u, 0x2f, i32);
 STORE_OP(I32, store, 0x36);
 STORE_OP(I32, store8, 0x3a);
 STORE_OP(I32, store16, 0x3b);
+
+BINARY_OP(I64, add, 0x7c, _i64, _i64, _i64);
+STORE_OP(I64, store, 0x37);
 
 BINARY_OP(F32, eq, 0x5b, f32, f32, i32);
 BINARY_OP(F32, ne, 0x5c, f32, f32, i32);

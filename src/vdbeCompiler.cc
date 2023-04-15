@@ -1,21 +1,52 @@
+#include <map>
 #include <set>
 
 #include "sqliteInt.h"
 #include "vdbeInt.h"
 #include "wasmblr.h"
 
-typedef int (*jitOp)(int, int);
+typedef int (*jitOp)(Vdbe *);
 static std::set<Vdbe *> jitCandidates;
 
-std::vector<uint8_t> genAdd(void *call_address) {
+std::vector<uint8_t> genFunction(Vdbe *p) {
   wasmblr::CodeGenerator cg;
   cg.memory(0).import_("env", "memory");
   cg.table(0U, cg.funcRef).import_("env", "__indirect_function_table");
 
-  auto add_func = cg.function({cg.i32, cg.i32}, {cg.i32}, [&]() {
-    cg.local.get(0);
-    cg.local.get(1);
-    cg.i32.add();
+  auto main_func = cg.function({cg.i32}, {cg.i32}, [&]() {
+    std::map<int, int> jump_labels;
+    int beginning = 0;
+
+    for (int i = 0; i < p->nOp; i++) {
+      Op pOp = p->aOp[i];
+      switch (pOp.opcode) {
+        case OP_Init:
+          // cg.block(beginning);
+        case OP_Goto:  // GOTO P2
+          // for now, act under assumption of a linear flow
+          i = pOp.p2 - 1;
+          break;
+        case OP_Halt:
+          // We've reached the end of code generation
+          i = p->nOp;
+          break;
+        case OP_Transaction:
+          break;
+        case OP_Integer:  // r[P2]=P1
+          Op pOp = p->aOp[i];
+          Mem *pOut = &p->aMem[pOp.p2];
+
+          cg.i32.const_((int)pOut);
+          cg._i64.const_((i64)pOp.p1);
+          cg._i64.store(3U, (int)&pOut->u.i - (int)pOut);
+          cg.i32.const_((int)pOut);
+          cg.i32.const_(MEM_Int);
+          cg.i32.store16(1U, (int)&pOut->flags - (int)pOut);
+          break;
+      }
+    }
+
+    cg.i32.const_(0);
   });
 
   auto relocations = cg.function({}, {}, [&]() {
@@ -33,14 +64,14 @@ std::vector<uint8_t> genAdd(void *call_address) {
     cg.i32.const_(count);
     cg.table.init(0, 0);
 
-    cg.i32.const_(reinterpret_cast<intptr_t>(call_address));
+    cg.i32.const_(reinterpret_cast<intptr_t>(&(p->jitCode)));
     cg.local.get(base);
     cg.i32.const_(0);
     cg.i32.add();
     cg.i32.store(2U);
   });
   cg.start(relocations);
-  cg.elem(add_func);
+  cg.elem(main_func);
 
   return cg.emit();
 }
@@ -54,48 +85,10 @@ int sqlite3VdbeExecJIT(Vdbe *p) {
       fprintf(stdout, "appending to jit candidates\n");
     }
   } else {
-    int additionResult = ((jitOp)p->jitCode)(351, 69);
-    fprintf(stdout, "additionResult: %d\n", additionResult);
+    int additionResult = ((jitOp)p->jitCode)(p);
+    fprintf(stdout, "result: %d\n", additionResult);
   }
   return sqlite3VdbeExec(p);
-
-  // Op *aOp = p->aOp;          /* Copy of p->aOp */
-  // Op *pOp = aOp;             /* Current operation */
-  // int rc = SQLITE_OK;        /* Value to return */
-  // sqlite3 *db = p->db;       /* The database */
-  // u8 resetSchemaOnFault = 0; /* Reset schema after an error if positive */
-  // u8 encoding = ENC(db);     /* The database encoding */
-  // int iCompare = 0;          /* Result of last comparison */
-  // u64 nVmStep = 0;           /* Number of virtual machine steps */
-  // Mem *aMem = p->aMem;       /* Copy of p->aMem */
-  // Mem *pIn1 = 0;             /* 1st input operand */
-  // Mem *pIn2 = 0;             /* 2nd input operand */
-  // Mem *pIn3 = 0;             /* 3rd input operand */
-  // Mem *pOut = 0;             /* Output operand */
-
-  // assert(p->rc == SQLITE_OK || (p->rc & 0xff) == SQLITE_BUSY);
-  // testcase(p->rc != SQLITE_OK);
-  // p->rc = SQLITE_OK;
-  // assert(p->bIsReader || p->readOnly != 0);
-  // p->iCurrentTime = 0;
-  // assert(p->explain == 0);
-  // db->busyHandler.nBusy = 0;
-  // sqlite3VdbeIOTraceSql(p);
-
-  // for (pOp = &aOp[p->pc]; 1; pOp++) {
-  //   nVmStep++;
-
-  //   switch (pOp->opcode) {
-  //       // case OP_Goto:
-  //       //   pOp = &aOp[pOp->p2 - 1];
-  //       //   break;
-
-  //     default:
-  //       return sqlite3VdbeExec(p);
-  //   }
-  // }
-
-  // return 0;
 }
 
 struct WasmModule {
@@ -107,7 +100,7 @@ WasmModule *jitModule() {
 
   std::vector<uint8_t> result;
 
-  for (Vdbe *p : jitCandidates) result = genAdd(&(p->jitCode));
+  for (Vdbe *p : jitCandidates) result = genFunction(p);
 
   jitCandidates.clear();
   return new WasmModule{result};
