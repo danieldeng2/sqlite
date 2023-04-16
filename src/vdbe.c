@@ -8877,3 +8877,8 @@ abort_due_to_interrupt:
   rc = SQLITE_INTERRUPT;
   goto abort_due_to_error;
 }
+
+void beginTransaction(Btree *pBt, int p2) {
+  int iMeta = 0;
+  sqlite3BtreeBeginTrans(pBt, p2, &iMeta);
+}

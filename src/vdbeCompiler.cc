@@ -8,31 +8,15 @@
 typedef int (*jitOp)(Vdbe *);
 static std::set<Vdbe *> jitCandidates;
 
-typedef int (*TransCall)(Btree *, int, int *);
-
-__attribute__((optnone)) 
-int transCall(Btree *, int, int *){
-  return 0;
-}
-
-__attribute__((noinline)) 
-void genOpTransaction(Vdbe *p){
-  int iMeta = 11111;
-  // int iMeta2 = 11111;
-  Btree *pBt = (Btree *)22222;
-  TransCall function = transCall;
-  int p2 = 44444;
-  transCall(pBt, p2, &iMeta);
-  // transCall(pBt, p2, &iMeta, &iMeta2);
-}
-
 std::vector<uint8_t> genFunction(Vdbe *p) {
   wasmblr::CodeGenerator cg;
   cg.memory(0).import_("env", "memory");
   cg.table(0U, cg.funcRef).import_("env", "__indirect_function_table");
   auto stackSave = cg.function({}, {cg.i32}).import_("env", "stackSave");
   auto stackRestore = cg.function({cg.i32}, {}).import_("env", "stackRestore");
-  auto stackAlloc = cg.function({cg.i32}, {cg.i32}).import_("env", "stackAlloc");
+  auto stackAlloc =
+      cg.function({cg.i32}, {cg.i32}).import_("env", "stackAlloc");
+  auto begin_transaction_type = cg.type_def({cg.i32, cg.i32}, {});
 
   auto main_func = cg.function({cg.i32}, {cg.i32}, [&]() {
     std::map<int, int> jump_labels;
@@ -57,7 +41,11 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           sqlite3 *db = p->db;
           Db *pDb = &db->aDb[pOp.p1];
           Btree *pBt = pDb->pBt;
-          genOpTransaction(p);
+
+          cg.i32.const_((int)pBt);
+          cg.i32.const_((int)pOp.p2);
+          cg.i32.const_(reinterpret_cast<intptr_t>(&beginTransaction));
+          cg.call_indirect(begin_transaction_type);
           break;
         }
         case OP_Integer: {  // r[P2]=P1
