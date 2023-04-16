@@ -8,14 +8,36 @@
 typedef int (*jitOp)(Vdbe *);
 static std::set<Vdbe *> jitCandidates;
 
+typedef int (*TransCall)(Btree *, int, int *);
+
+__attribute__((optnone)) 
+int transCall(Btree *, int, int *){
+  return 0;
+}
+
+__attribute__((noinline)) 
+void genOpTransaction(Vdbe *p){
+  int iMeta = 11111;
+  // int iMeta2 = 11111;
+  Btree *pBt = (Btree *)22222;
+  TransCall function = transCall;
+  int p2 = 44444;
+  transCall(pBt, p2, &iMeta);
+  // transCall(pBt, p2, &iMeta, &iMeta2);
+}
+
 std::vector<uint8_t> genFunction(Vdbe *p) {
   wasmblr::CodeGenerator cg;
   cg.memory(0).import_("env", "memory");
   cg.table(0U, cg.funcRef).import_("env", "__indirect_function_table");
+  auto stackSave = cg.function({}, {cg.i32}).import_("env", "stackSave");
+  auto stackRestore = cg.function({cg.i32}, {}).import_("env", "stackRestore");
+  auto stackAlloc = cg.function({cg.i32}, {cg.i32}).import_("env", "stackAlloc");
 
   auto main_func = cg.function({cg.i32}, {cg.i32}, [&]() {
     std::map<int, int> jump_labels;
     int beginning = 0;
+    cg.call(stackSave);
 
     for (int i = 0; i < p->nOp; i++) {
       Op pOp = p->aOp[i];
@@ -30,10 +52,15 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           // We've reached the end of code generation
           i = p->nOp;
           break;
-        case OP_Transaction:
+        case OP_Transaction: {  // Begin a transaction on database P1
+          int iMeta = 0;
+          sqlite3 *db = p->db;
+          Db *pDb = &db->aDb[pOp.p1];
+          Btree *pBt = pDb->pBt;
+          genOpTransaction(p);
           break;
-        case OP_Integer:  // r[P2]=P1
-          Op pOp = p->aOp[i];
+        }
+        case OP_Integer: {  // r[P2]=P1
           Mem *pOut = &p->aMem[pOp.p2];
 
           cg.i32.const_((int)pOut);
@@ -43,10 +70,12 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           cg.i32.const_(MEM_Int);
           cg.i32.store16(1U, (int)&pOut->flags - (int)pOut);
           break;
+        }
       }
     }
 
-    cg.i32.const_(0);
+    cg.call(stackRestore);
+    cg.i32.const_(SQLITE_OK);
   });
 
   auto relocations = cg.function({}, {}, [&]() {

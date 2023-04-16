@@ -276,6 +276,13 @@ struct Function {
   std::vector<uint8_t> output_types;
   std::function<void()> body;
   std::vector<uint8_t> locals;  // resolved later
+
+  uint32_t import_(std::string, std::string);
+  uint32_t import_idx;
+  std::string a_string = "";
+  std::string b_string = "";
+  bool is_import() const { return a_string.size() && b_string.size(); }
+
   void emit() {
     locals.clear();
     body();
@@ -317,6 +324,9 @@ struct CodeGenerator {
                     std::vector<uint8_t> output_types,
                     std::function<void()> body);
 
+  Function& function(std::vector<uint8_t> input_types,
+                    std::vector<uint8_t> output_types);
+
   std::vector<uint8_t> emit();
 
   // Implementation
@@ -334,6 +344,7 @@ struct CodeGenerator {
   CodeGenerator(const CodeGenerator&) = delete;
   CodeGenerator(CodeGenerator&&) = delete;
 
+  std::vector<Function> imported_functions_;
   std::vector<Function> functions_;
   std::vector<uint32_t> elem_functions_;
   uint32_t start_function_ = -1;
@@ -387,6 +398,11 @@ struct CodeGenerator {
 
   template <typename T>
   void concat(std::vector<uint8_t>& out, const T& inp) {
+    out.insert(out.end(), inp.begin(), inp.end());
+  };
+
+  template <typename T>
+  void concat(std::vector<Function>& out, const T& inp) {
     out.insert(out.end(), inp.begin(), inp.end());
   };
 
@@ -871,7 +887,8 @@ inline void CodeGenerator::br_if(uint32_t labelidx) {
 }
 inline void CodeGenerator::end() { emit(0x0b); }
 inline void CodeGenerator::call(uint32_t fn_idx) {
-  assert(fn_idx < functions_.size() && "function index does not exist");
+  assert(fn_idx < functions_.size() + imported_functions_.size() &&
+         "function index does not exist");
   emit(0x10);
   emit(encode_unsigned(fn_idx));
 }
@@ -891,7 +908,21 @@ inline uint32_t CodeGenerator::function(std::vector<uint8_t> input_types,
                                         std::function<void()> body) {
   auto idx = functions_.size();
   functions_.emplace_back(input_types, output_types, body);
-  return idx;
+  return imported_functions_.size() + idx;
+}
+
+inline Function& CodeGenerator::function(std::vector<uint8_t> input_types,
+                                        std::vector<uint8_t> output_types) {
+  imported_functions_.emplace_back(input_types, output_types);
+  imported_functions_[imported_functions_.size() - 1].import_idx = imported_functions_.size() - 1;
+  return imported_functions_[imported_functions_.size() - 1];
+}
+
+inline uint32_t Function::import_(std::string a, std::string b) {
+  assert(!(is_import()) && "already set");
+  a_string = a;
+  b_string = b;
+  return import_idx;
 }
 
 inline std::vector<uint8_t> CodeGenerator::emit() {
@@ -902,8 +933,12 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
   concat(emitted_bytes, module_version);
 
   std::vector<uint8_t> type_section_bytes;
-  concat(type_section_bytes, encode_unsigned(functions_.size()));
-  for (const auto& f : functions_) {
+  std::vector<Function> all_functions;
+  concat(all_functions, imported_functions_);
+  concat(all_functions, functions_);
+
+  concat(type_section_bytes, encode_unsigned(all_functions.size()));
+  for (const auto& f : all_functions) {
     type_section_bytes.emplace_back(0x60);
     concat(type_section_bytes, encode_unsigned(f.input_types.size()));
     for (const auto& t : f.input_types) {
@@ -923,6 +958,7 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
   int numImports = 0;
   numImports += memory.is_import() ? 1 : 0;
   numImports += table.is_import() ? 1 : 0;
+  numImports += imported_functions_.size();
   if (numImports != 0) {
     concat(import_section_bytes, encode_unsigned(numImports));
 
@@ -945,6 +981,17 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
       }
     }
 
+    if (imported_functions_.size() != 0) {
+      for (auto i = 0; i < imported_functions_.size(); ++i) {
+        auto imported_function = imported_functions_[i];
+        concat(import_section_bytes, encode_string(imported_function.a_string));
+        concat(import_section_bytes, encode_string(imported_function.b_string));
+        import_section_bytes.emplace_back(0x0);  // function flag
+
+        concat(import_section_bytes, encode_unsigned(i));  // type index
+      }
+    }
+
     if (table.is_import()) {
       concat(import_section_bytes, encode_string(table.a_string));
       concat(import_section_bytes, encode_string(table.b_string));
@@ -962,7 +1009,8 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
   std::vector<uint8_t> function_section_bytes;
   concat(function_section_bytes, encode_unsigned(functions_.size()));
   for (auto i = 0; i < functions_.size(); ++i) {
-    concat(function_section_bytes, encode_unsigned(i));
+    concat(function_section_bytes,
+           encode_unsigned(i + imported_functions_.size()));
   }
   emitted_bytes.emplace_back(0x3);
   concat(emitted_bytes, encode_unsigned(function_section_bytes.size()));
