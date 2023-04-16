@@ -5,8 +5,40 @@
 #include "vdbeInt.h"
 #include "wasmblr.h"
 
-typedef int (*jitOp)(Vdbe *);
+typedef int (*jitOp)();
 static std::set<Vdbe *> jitCandidates;
+
+__attribute__((optnone)) void doSomething(int value) { printf("%d", value); }
+__attribute__((optnone)) void doSomethingElse(int value) {
+  printf("%d", value);
+}
+
+__attribute__((noinline)) void genGoto(int *init_pc) {
+  while (1) {
+    switch (*init_pc) {
+      case 0: {
+        doSomethingElse(123123);
+        *init_pc = 1111111;
+        break;
+      }
+      case 1: {
+        doSomething(123123);
+        *init_pc = 1111111;
+        break;
+      }
+      case 2: {
+        doSomething(321312);
+        *init_pc = 2222222;
+        break;
+      }
+      case 3: {
+        doSomethingElse(213213);
+        *init_pc = 3333333;
+        break;
+      }
+    }
+  }
+}
 
 std::vector<uint8_t> genFunction(Vdbe *p) {
   wasmblr::CodeGenerator cg;
@@ -17,25 +49,37 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
   auto stackAlloc =
       cg.function({cg.i32}, {cg.i32}).import_("env", "stackAlloc");
   auto begin_transaction_type = cg.type_def({cg.i32, cg.i32}, {});
+  auto block_type = cg.type_def({}, {});
 
-  auto main_func = cg.function({cg.i32}, {cg.i32}, [&]() {
-    std::map<int, int> jump_labels;
-    int beginning = 0;
+  auto main_func = cg.function({}, {cg.i32}, [&]() {
     cg.call(stackSave);
+    cg.loop(cg.void_);
+    for (int i = 0; i < p->nOp; i++) {
+      cg.block(cg.void_);
+    }
+
+    cg.i32.const_((int32_t)&p->pc);
+    cg.i32.load(2U, 0U);
+    std::vector<uint32_t> labelidxs;
+    for (int i = 0; i < p->nOp; i++) labelidxs.emplace_back(i);
+    cg.br_table(labelidxs, p->nOp);
+    cg.end();
 
     for (int i = 0; i < p->nOp; i++) {
       Op pOp = p->aOp[i];
+      int nextPc = i + 1;
+      int returnValue = -1;
+
       switch (pOp.opcode) {
         case OP_Init:
-          // cg.block(beginning);
-        case OP_Goto:  // GOTO P2
-          // for now, act under assumption of a linear flow
-          i = pOp.p2 - 1;
+        case OP_Goto: {  // GOTO P2
+          nextPc = pOp.p2;
           break;
-        case OP_Halt:
-          // We've reached the end of code generation
-          i = p->nOp;
+        }
+        case OP_Halt: {  // return code P1
+          returnValue = pOp.p1;
           break;
+        }
         case OP_Transaction: {  // Begin a transaction on database P1
           int iMeta = 0;
           sqlite3 *db = p->db;
@@ -60,7 +104,19 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           break;
         }
       }
-    }
+
+      cg.i32.const_((int32_t)&p->pc);
+      cg.i32.const_(nextPc);
+      cg.i32.store(2U, 0U);
+
+      if (returnValue < 0) {
+        cg.br(p->nOp - i - 1);
+      } else {
+        cg.i32.const_(returnValue);
+        cg.return_();
+      }
+      cg.end();
+    };
 
     cg.call(stackRestore);
     cg.i32.const_(SQLITE_OK);
@@ -102,7 +158,7 @@ int sqlite3VdbeExecJIT(Vdbe *p) {
       fprintf(stdout, "appending to jit candidates\n");
     }
   } else {
-    int additionResult = ((jitOp)p->jitCode)(p);
+    int additionResult = ((jitOp)p->jitCode)();
     fprintf(stdout, "result: %d\n", additionResult);
   }
   return sqlite3VdbeExec(p);

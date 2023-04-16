@@ -317,7 +317,9 @@ struct CodeGenerator {
   void loop(uint8_t type);
   void if_(uint8_t type);
   void else_();
+  void return_();
   void br(uint32_t labelidx);
+  void br_table(std::vector<uint32_t> labelidxs, uint32_t defaultidx);
   void br_if(uint32_t labelidx);
   void end();
   void call(uint32_t funcidx);
@@ -882,6 +884,10 @@ inline void CodeGenerator::loop(uint8_t type) {
   emit(type);
 }
 
+inline void CodeGenerator::return_() {
+  emit(0x0f);
+}
+
 inline void CodeGenerator::if_(uint8_t type) {
   auto t = pop();
   assert(t == i32);
@@ -899,6 +905,18 @@ inline void CodeGenerator::br_if(uint32_t labelidx) {
   emit(0x0d);
   emit(encode_unsigned(labelidx));
 }
+inline void CodeGenerator::br_table(std::vector<uint32_t> labelidxs,
+                                    uint32_t defaultidx) {
+  auto t = pop();
+  assert(t == i32);
+  emit(0x0e);
+  emit(encode_unsigned(labelidxs.size()));
+  for (uint32_t labelidx : labelidxs) {
+    emit(encode_unsigned(labelidx));
+  }
+  emit(encode_unsigned(defaultidx));
+}
+
 inline void CodeGenerator::end() { emit(0x0b); }
 inline void CodeGenerator::call(uint32_t fn_idx) {
   assert(fn_idx < functions_.size() + imported_functions_.size() &&
@@ -1030,7 +1048,8 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
         concat(import_section_bytes, encode_string(imported_function.b_string));
         import_section_bytes.emplace_back(0x0);  // function flag
 
-        concat(import_section_bytes, encode_unsigned(type_definitions_.size() + i));  // type index
+        concat(import_section_bytes,
+               encode_unsigned(type_definitions_.size() + i));  // type index
       }
     }
 
@@ -1052,7 +1071,8 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
   concat(function_section_bytes, encode_unsigned(functions_.size()));
   for (auto i = 0; i < functions_.size(); ++i) {
     concat(function_section_bytes,
-           encode_unsigned(type_definitions_.size() + imported_functions_.size() + i));
+           encode_unsigned(type_definitions_.size() +
+                           imported_functions_.size() + i));
   }
   emitted_bytes.emplace_back(0x3);
   concat(emitted_bytes, encode_unsigned(function_section_bytes.size()));
