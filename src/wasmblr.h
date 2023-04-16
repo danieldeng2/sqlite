@@ -318,6 +318,7 @@ struct CodeGenerator {
   void if_(uint8_t type);
   void else_();
   void return_();
+  void drop();
   void br(uint32_t labelidx);
   void br_table(std::vector<uint32_t> labelidxs, uint32_t defaultidx);
   void br_if(uint32_t labelidx);
@@ -886,6 +887,10 @@ inline void CodeGenerator::loop(uint8_t type) {
 
 inline void CodeGenerator::return_() {
   emit(0x0f);
+}
+
+inline void CodeGenerator::drop() {
+  emit(0x1a);
 }
 
 inline void CodeGenerator::if_(uint8_t type) {

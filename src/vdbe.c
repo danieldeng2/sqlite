@@ -8882,3 +8882,92 @@ void beginTransaction(Btree *pBt, int p2) {
   int iMeta = 0;
   sqlite3BtreeBeginTrans(pBt, p2, &iMeta);
 }
+
+int execOpenReadWrite(Vdbe *p, Op *pOp) {
+  int nField;
+  KeyInfo *pKeyInfo;
+  u32 p2;
+  int iDb;
+  int wrFlag;
+  Btree *pX;
+  VdbeCursor *pCur;
+  Db *pDb;
+  int rc = 0;
+  sqlite3 *db = p->db;
+  Mem *aMem = p->aMem;
+
+  assert(pOp->opcode == OP_OpenWrite || pOp->p5 == 0 ||
+         pOp->p5 == OPFLAG_SEEKEQ);
+  assert(pOp->opcode == OP_OpenRead || pOp->opcode == OP_ReopenIdx ||
+         p->readOnly == 0);
+
+  nField = 0;
+  pKeyInfo = 0;
+  p2 = (u32)pOp->p2;
+  iDb = pOp->p3;
+  assert(iDb >= 0 && iDb < db->nDb);
+  assert(DbMaskTest(p->btreeMask, iDb));
+  pDb = &db->aDb[iDb];
+  pX = pDb->pBt;
+  assert(pX != 0);
+  if (pOp->opcode == OP_OpenWrite) {
+    assert(OPFLAG_FORDELETE == BTREE_FORDELETE);
+    wrFlag = BTREE_WRCSR | (pOp->p5 & OPFLAG_FORDELETE);
+    assert(sqlite3SchemaMutexHeld(db, iDb, 0));
+    if (pDb->pSchema->file_format < p->minWriteFileFormat) {
+      p->minWriteFileFormat = pDb->pSchema->file_format;
+    }
+  } else {
+    wrFlag = 0;
+  }
+  if (pOp->p5 & OPFLAG_P2ISREG) {
+    assert(p2 > 0);
+    assert(p2 <= (u32)(p->nMem + 1 - p->nCursor));
+    assert(pOp->opcode == OP_OpenWrite);
+    Mem *pIn2 = &aMem[p2];
+    assert(memIsValid(pIn2));
+    assert((pIn2->flags & MEM_Int) != 0);
+    sqlite3VdbeMemIntegerify(pIn2);
+    p2 = (int)pIn2->u.i;
+    /* The p2 value always comes from a prior OP_CreateBtree opcode and
+    ** that opcode will always set the p2 value to 2 or more or else fail.
+    ** If there were a failure, the prepared statement would have halted
+    ** before reaching this instruction. */
+    assert(p2 >= 2);
+  }
+  if (pOp->p4type == P4_KEYINFO) {
+    pKeyInfo = pOp->p4.pKeyInfo;
+    assert(pKeyInfo->enc == ENC(db));
+    assert(pKeyInfo->db == db);
+    nField = pKeyInfo->nAllField;
+  } else if (pOp->p4type == P4_INT32) {
+    nField = pOp->p4.i;
+  }
+  assert(pOp->p1 >= 0);
+  assert(nField >= 0);
+  testcase(nField == 0); /* Table with INTEGER PRIMARY KEY and nothing else */
+  pCur = allocateCursor(p, pOp->p1, nField, CURTYPE_BTREE);
+  pCur->iDb = iDb;
+  pCur->nullRow = 1;
+  pCur->isOrdered = 1;
+  pCur->pgnoRoot = p2;
+#ifdef SQLITE_DEBUG
+  pCur->wrFlag = wrFlag;
+#endif
+  rc = sqlite3BtreeCursor(pX, p2, wrFlag, pKeyInfo, pCur->uc.pCursor);
+  pCur->pKeyInfo = pKeyInfo;
+  /* Set the VdbeCursor.isTable variable. Previous versions of
+  ** SQLite used to check if the root-page flags were sane at this point
+  ** and report database corruption if they were not, but this check has
+  ** since moved into the btree layer.  */
+  pCur->isTable = pOp->p4type != P4_KEYINFO;
+
+open_cursor_set_hints:
+  assert(OPFLAG_BULKCSR == BTREE_BULKLOAD);
+  assert(OPFLAG_SEEKEQ == BTREE_SEEK_EQ);
+  testcase(pOp->p5 & OPFLAG_BULKCSR);
+  testcase(pOp->p2 & OPFLAG_SEEKEQ);
+  sqlite3BtreeCursorHintFlags(pCur->uc.pCursor,
+                              (pOp->p5 & (OPFLAG_BULKCSR | OPFLAG_SEEKEQ)));
+  return rc;
+}
