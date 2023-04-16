@@ -580,6 +580,7 @@ int sqlite3VdbeIdxKeyCompare(sqlite3*,VdbeCursor*,UnpackedRecord*,int*);
 int sqlite3VdbeIdxRowid(sqlite3*, BtCursor*, i64*);
 int sqlite3VdbeExec(Vdbe*);
 int sqlite3VdbeExecJIT(Vdbe*);
+void execBtreeFirst(BtCursor *, int *);
 void beginTransaction(Btree *pBt, int p2);
 int execOpenReadWrite(Vdbe *p, Op *pOp);
 #if !defined(SQLITE_OMIT_EXPLAIN) || defined(SQLITE_ENABLE_BYTECODE_VTAB)

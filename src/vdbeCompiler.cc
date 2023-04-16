@@ -6,7 +6,6 @@
 #include "wasmblr.h"
 
 typedef int (*jitOp)();
-static std::set<Vdbe *> jitCandidates;
 
 uint32_t genRelocations(wasmblr::CodeGenerator &cg, void *jit_address) {
   return cg.function({}, {}, [&]() {
@@ -64,6 +63,7 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
       Op pOp = p->aOp[i];
       int nextPc = i + 1;
       int returnValue = -1;
+      bool conditionalJump = false;
 
       switch (pOp.opcode) {
         case OP_Init:
@@ -98,20 +98,69 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           cg.i32.store16(1U, (int)&pOut->flags - (int)pOut);
           break;
         }
-        case OP_OpenRead: 
-        case OP_OpenWrite: 
-        {
+        case OP_OpenRead:
+        case OP_OpenWrite: {
           cg.i32.const_((int)p);
           cg.i32.const_((int)&pOp);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execOpenReadWrite));
           cg.call_indirect(execOpenReadWrite_type);
           cg.drop();
+          break;
+        }
+        case OP_Rewind: {  // Goto beginning of table
+          VdbeCursor *pC = p->apCsr[pOp.p1];
+          BtCursor *pCrsr = pC->uc.pCursor;
+
+          // assume currently not sorter
+          cg.i32.const_((int)pCrsr);
+          
+          // int res;
+          cg.i32.const_(4);
+          cg.call(stackAlloc);
+          cg.local(cg.i32);
+          int pResPointer = cg.locals().size() - 1;
+          cg.local.tee(pResPointer);
+
+          // sqlite3BtreeFirst(pCrsr, &res)
+          cg.i32.const_(reinterpret_cast<intptr_t>(&execBtreeFirst));
+          cg.call_indirect(beginTransaction_type);
+
+          // pC->nullRow = (u8)res;
+          cg.i32.const_(pC->nullRow);
+          cg.local.get(pResPointer);
+          cg.i32.load(2U, 0U);
+          cg.i32.store8(0U, 0U);
+
+          // pC->deferredMoveto = 0;
+          cg.i32.const_(0);
+          cg.i32.const_(pC->deferredMoveto);
+          cg.i32.store8(0U, 0U);
+
+          // pC->cacheStatus = CACHE_STALE;
+          cg.i32.const_(CACHE_STALE);
+          cg.i32.const_(pC->cacheStatus);
+          cg.i32.store(2U, 0U);
+
+          // if( res ) goto jump_to_p2;
+          conditionalJump = true;
+          cg.i32.const_((int32_t)&p->pc);
+          cg.local.get(pResPointer);
+          cg.i32.load(2U, 0U);
+          cg.if_(cg.i32);
+          { cg.i32.const_(pOp.p2); }
+          cg.else_();
+          { cg.i32.const_(nextPc); }
+          cg.end();
+          cg.i32.store(2U, 0U);
+          break;
         }
       }
 
-      cg.i32.const_((int32_t)&p->pc);
-      cg.i32.const_(nextPc);
-      cg.i32.store(2U, 0U);
+      if (!conditionalJump) {
+        cg.i32.const_((int32_t)&p->pc);
+        cg.i32.const_(nextPc);
+        cg.i32.store(2U, 0U);
+      }
 
       if (returnValue < 0) {
         cg.br(p->nOp - i - 1);
@@ -136,29 +185,17 @@ extern "C" {
 
 int sqlite3VdbeExecJIT(Vdbe *p) {
   if (p->jitCode == NULL) {
-    if (jitCandidates.find(p) == jitCandidates.end()) {
-      jitCandidates.insert(p);
-      fprintf(stdout, "appending to jit candidates\n");
-    }
-  } else {
-    int additionResult = ((jitOp)p->jitCode)();
-    fprintf(stdout, "result: %d\n", additionResult);
+    return sqlite3VdbeExec(p);
   }
-  return sqlite3VdbeExec(p);
+  return ((jitOp)p->jitCode)();
 }
 
 struct WasmModule {
   std::vector<uint8_t> data;
 };
 
-WasmModule *jitModule() {
-  if (jitCandidates.empty()) return NULL;
-
-  std::vector<uint8_t> result;
-
-  for (Vdbe *p : jitCandidates) result = genFunction(p);
-
-  jitCandidates.clear();
+WasmModule *jitStatement(Vdbe *p) {
+  std::vector<uint8_t> result = genFunction(p);
   return new WasmModule{result};
 }
 

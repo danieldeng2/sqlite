@@ -8971,3 +8971,7 @@ open_cursor_set_hints:
                               (pOp->p5 & (OPFLAG_BULKCSR | OPFLAG_SEEKEQ)));
   return rc;
 }
+
+void execBtreeFirst(BtCursor *pCrsr, int *pRes){
+  sqlite3BtreeFirst(pCrsr, pRes);
+}
