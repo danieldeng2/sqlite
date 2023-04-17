@@ -8,16 +8,16 @@
 typedef int (*jitOp)();
 
 // TODO: replace with assembly
-void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut){
+void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
-  if( (pIn1->flags & pIn2->flags & MEM_Int)!=0 ){
+  if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
     pOut->u.i = pIn1->u.i + pIn2->u.i;
     flag = MEM_Int;
   } else {
     pOut->u.r = pIn1->u.r + pIn2->u.r;
     flag = MEM_Real;
   }
-  pOut->flags = (pOut->flags&~(MEM_TypeMask|MEM_Zero)) | flag;
+  pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
 
 void genOpRewind(wasmblr::CodeGenerator &cg, Vdbe *p, Op pOp, int stackAlloc,
@@ -120,39 +120,39 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
     cg.end();
 
     for (int i = 0; i < p->nOp; i++) {
-      Op pOp = p->aOp[i];
+      Op *pOp = &p->aOp[i];
       int nextPc = i + 1;
       int returnValue = -1;
       bool conditionalJump = false;
 
-      switch (pOp.opcode) {
+      switch (pOp->opcode) {
         case OP_Init:
         case OP_Goto: {  // GOTO P2
-          nextPc = pOp.p2;
+          nextPc = pOp->p2;
           break;
         }
         case OP_Halt: {  // return code P1
-          // returnValue = pOp.p1;
+          // returnValue = pOp->p1;
           returnValue = SQLITE_DONE;
           break;
         }
         case OP_Transaction: {  // Begin a transaction on database P1
           int iMeta = 0;
           sqlite3 *db = p->db;
-          Db *pDb = &db->aDb[pOp.p1];
+          Db *pDb = &db->aDb[pOp->p1];
           Btree *pBt = pDb->pBt;
 
           cg.i32.const_((int)pBt);
-          cg.i32.const_((int)pOp.p2);
+          cg.i32.const_((int)pOp->p2);
           cg.i32.const_(reinterpret_cast<intptr_t>(&beginTransaction));
           cg.call_indirect(func_two_zero);
           break;
         }
         case OP_Integer: {  // r[P2]=P1
-          Mem *pOut = &p->aMem[pOp.p2];
+          Mem *pOut = &p->aMem[pOp->p2];
 
           cg.i32.const_((int)pOut);
-          cg._i64.const_((i64)pOp.p1);
+          cg._i64.const_((i64)pOp->p1);
           cg._i64.store(3U, (int)&pOut->u.i - (int)pOut);
           cg.i32.const_((int)pOut);
           cg.i32.const_(MEM_Int);
@@ -162,7 +162,7 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
         case OP_OpenRead:
         case OP_OpenWrite: {
           cg.i32.const_((int)p);
-          cg.i32.const_((int)&pOp);
+          cg.i32.const_((int)pOp);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execOpenReadWrite));
           cg.call_indirect(func_two_one);
           cg.drop();
@@ -174,12 +174,12 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
 
           // For now, call helper function to achieve goal
           cg.i32.const_((int)p);
-          cg.i32.const_((int)&pOp);
+          cg.i32.const_((int)pOp);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execOpRewind));
           cg.call_indirect(func_two_one);
 
           cg.if_(cg.i32);
-          { cg.i32.const_(pOp.p2); }
+          { cg.i32.const_(pOp->p2); }
           cg.else_();
           { cg.i32.const_(nextPc); }
           cg.end();
@@ -188,69 +188,70 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
         }
         case OP_Column: {  // r[P3]=PX cursor P1 column P2
           cg.i32.const_((int)p);
-          cg.i32.const_((int)&pOp);
+          cg.i32.const_((int)pOp);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execOpColumn));
           cg.call_indirect(func_two_one);
           cg.drop();
           break;
         }
-        case OP_Add: { // r[P3]=r[P1]+r[P2]
-          cg.i32.const_((int)&p->aMem[pOp.p1]);
-          cg.i32.const_((int)&p->aMem[pOp.p2]);
-          cg.i32.const_((int)&p->aMem[pOp.p3]);
+        case OP_Add: {  // r[P3]=r[P1]+r[P2]
+          cg.i32.const_((int)&p->aMem[pOp->p1]);
+          cg.i32.const_((int)&p->aMem[pOp->p2]);
+          cg.i32.const_((int)&p->aMem[pOp->p3]);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execOpAdd));
           cg.call_indirect(func_three_zero);
           break;
         }
-        case OP_ResultRow: { // output=r[P1@P2]
+        case OP_ResultRow: {  // output=r[P1@P2]
           // p->cacheCtr = (p->cacheCtr + 2)|1;
-          cg.i32.const_((int32_t) &p->cacheCtr);
-          cg.i32.const_((int32_t) &p->cacheCtr);
+          cg.i32.const_((int32_t)&p->cacheCtr);
+          cg.i32.const_((int32_t)&p->cacheCtr);
           cg.i32.load(2U, 0U);
           cg.i32.const_(2);
           cg.i32.add();
           cg.i32.const_(1);
           cg.i32.or_();
+          cg.i32.store();
 
           // p->pResultRow = &aMem[pOp->p1];
-          cg.i32.const_((int32_t) &p->pResultRow);
-          cg.i32.const_((int32_t) &p->aMem[pOp.p1]);
-          cg.i32.load(2U, 0U);
+          cg.i32.const_((int32_t)&p->pResultRow);
+          cg.i32.const_((int32_t)&p->aMem[pOp->p1]);
+          cg.i32.store();
           returnValue = SQLITE_ROW;
           break;
         }
         case OP_DecrJumpZero: {
-          cg.i32.const_((int32_t)  &p->aMem[pOp.p1].u.i);
-          cg.i32.const_((int32_t)  &p->aMem[pOp.p1].u.i);
+          cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
+          cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
           cg.i32.load(2U, 0U);
           cg.i32.const_(1);
           cg.i32.sub();
           cg.i32.store();
 
-
           conditionalJump = true;
           cg.i32.const_((int32_t)&p->pc);
-          cg.i32.const_((int32_t)&p->aMem[pOp.p1].u.i);
+          cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
           cg.i32.load(2U, 0U);
-          
+
           cg.if_(cg.i32);
           { cg.i32.const_(nextPc); }
           cg.else_();
-          { cg.i32.const_(pOp.p2); }
+          { cg.i32.const_(pOp->p2); }
           cg.end();
           cg.i32.store(2U, 0U);
           break;
         }
         case OP_Next: {
+          conditionalJump = true;
           cg.i32.const_((int)p);
-          cg.i32.const_((int)&pOp);
+          cg.i32.const_((int)pOp);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execOpNext));
           cg.call_indirect(func_two_one);
           cg.drop();
           break;
         }
         default: {
-          printf("TODO: index: %d OP: %d", i, pOp.opcode);
+          printf("TODO: index: %d OP: %d\n", i, pOp->opcode);
         }
       }
 
@@ -282,10 +283,16 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
 extern "C" {
 
 int sqlite3VdbeExecJIT(Vdbe *p) {
+  int rc;
+  // printf("p: %d \n", (int)p);
   if (p->jitCode == NULL) {
-    return sqlite3VdbeExec(p);
+    rc = sqlite3VdbeExec(p);
+  } else {
+    rc = ((jitOp)p->jitCode)();
   }
-  return ((jitOp)p->jitCode)();
+  // printf("pResultRow: %lld\n", p->pResultRow->u.i);
+  // printf("rc: %d\n", rc);
+  return rc;
 }
 
 struct WasmModule {

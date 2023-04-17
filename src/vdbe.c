@@ -9001,6 +9001,7 @@ int execOpRewind(Vdbe *p, Op *pOp){
     pC->deferredMoveto = 0;
     pC->cacheStatus = CACHE_STALE;
   }
+  pC->nullRow = (u8)res;
   return res;
 }
 
