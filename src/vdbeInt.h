@@ -583,6 +583,9 @@ int sqlite3VdbeExecJIT(Vdbe*);
 void execBtreeFirst(BtCursor *, int *);
 void beginTransaction(Btree *pBt, int p2);
 int execOpenReadWrite(Vdbe *p, Op *pOp);
+int execOpRewind(Vdbe *p, Op *pOp);
+int execOpColumn(Vdbe *p, Op *pOp);
+int execOpNext(Vdbe* p, Op pOp);
 #if !defined(SQLITE_OMIT_EXPLAIN) || defined(SQLITE_ENABLE_BYTECODE_VTAB)
 int sqlite3VdbeNextOpcode(Vdbe*,Mem*,int,int*,int*,Op**);
 char *sqlite3VdbeDisplayP4(sqlite3*,Op*);
