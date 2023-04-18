@@ -137,6 +137,19 @@ class F32 {
   friend CodeGenerator;
 };
 
+class F64 {
+ public:
+  operator uint8_t();
+
+  void load(uint32_t alignment = 1, uint32_t offset = 0);
+  void store(uint32_t alignment = 1, uint32_t offset = 0);
+
+ private:
+  F64(CodeGenerator& cg_) : cg(cg_) {}
+  CodeGenerator& cg;
+  friend CodeGenerator;
+};
+
 class FuncRef {
  public:
   operator uint8_t();
@@ -305,6 +318,7 @@ struct CodeGenerator {
   I64 _i64;
   I32 i32;
   F32 f32;
+  F64 f64;
   V128 v128;
   FuncRef funcRef;
 
@@ -353,6 +367,7 @@ struct CodeGenerator {
         i32(*this),
         _i64(*this),
         f32(*this),
+        f64(*this),
         v128(*this),
         funcRef(*this),
         memory(*this),
@@ -525,6 +540,8 @@ inline void I64::const_(int64_t i) {
 
 inline F32::operator uint8_t() { return 0x7d; }
 
+inline F64::operator uint8_t() { return 0x7c; }
+
 inline FuncRef::operator uint8_t() { return 0x70; }
 
 inline void F32::const_(float f) {
@@ -638,6 +655,9 @@ BINARY_OP(F32, max, 0x97, f32, f32, f32);
 BINARY_OP(F32, copysign, 0x98, f32, f32, f32);
 LOAD_OP(F32, load, 0x2a, f32);
 STORE_OP(F32, store, 0x38);
+
+LOAD_OP(F64, load, 0x2b, f64);
+STORE_OP(F64, store, 0x39);
 
 #undef UNARY_OP
 #undef BINARY_OP

@@ -19,7 +19,17 @@ void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
-
+void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
+  u16 flag;
+  if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
+    pOut->u.i = pIn1->u.i - pIn2->u.i;
+    flag = MEM_Int;
+  } else {
+    pOut->u.r = pIn2->u.r - pIn1->u.r;
+    flag = MEM_Real;
+  }
+  pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
+}
 void genOpRewind(wasmblr::CodeGenerator &cg, Vdbe *p, Op pOp, int stackAlloc,
                  int func_two_zero, int nextPc) {
   VdbeCursor *pC = p->apCsr[pOp.p1];
@@ -156,12 +166,39 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
         case OP_Integer: {  // r[P2]=P1
           Mem *pOut = &p->aMem[pOp->p2];
 
-          cg.i32.const_((int)pOut);
+          cg.i32.const_((int)&pOut->u.i);
           cg._i64.const_((i64)pOp->p1);
-          cg._i64.store(3U, (int)&pOut->u.i - (int)pOut);
-          cg.i32.const_((int)pOut);
+          cg._i64.store();
+          cg.i32.const_((int)&pOut->flags);
           cg.i32.const_(MEM_Int);
-          cg.i32.store16(1U, (int)&pOut->flags - (int)pOut);
+          cg.i32.store16();
+          break;
+        }
+        case OP_Real: {  // r[P2]=P4
+          Mem *pOut = &p->aMem[pOp->p2];
+
+          cg.i32.const_((int)&pOut->u.r);
+          cg.i32.const_((int)pOp->p4.pReal);
+          cg.f64.load();
+          cg.f64.store();
+          cg.i32.const_((int)&pOut->flags);
+          cg.i32.const_(MEM_Real);
+          cg.i32.store16();
+          break;
+        }
+        case OP_Null: {
+          u16 nullFlag = pOp->p1 ? (MEM_Null|MEM_Cleared) : MEM_Null;
+
+          for (int j = pOp->p2; j <= pOp->p3; j++){
+            Mem *pOut = &p->aMem[j];
+            cg.i32.const_((int)&pOut->n);
+            cg.i32.const_(0);
+            cg.i32.store();
+
+            cg.i32.const_((int)&pOut->flags);
+            cg.i32.const_(nullFlag);
+            cg.i32.store16();
+          }
           break;
         }
         case OP_OpenRead:
@@ -204,6 +241,14 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           cg.i32.const_((int)&p->aMem[pOp->p2]);
           cg.i32.const_((int)&p->aMem[pOp->p3]);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execOpAdd));
+          cg.call_indirect(func_three_zero);
+          break;
+        }
+        case OP_Subtract: {  // r[P3]=r[P1]+r[P2]
+          cg.i32.const_((int)&p->aMem[pOp->p1]);
+          cg.i32.const_((int)&p->aMem[pOp->p2]);
+          cg.i32.const_((int)&p->aMem[pOp->p3]);
+          cg.i32.const_(reinterpret_cast<intptr_t>(&execOpSubtract));
           cg.call_indirect(func_three_zero);
           break;
         }
