@@ -710,6 +710,7 @@ static const char *vdbeMemTypeName(Mem *pMem){
 ** Execute as much of a VDBE program as we can.
 ** This is the core of sqlite3_step().  
 */
+__attribute__((optnone)) 
 int sqlite3VdbeExec(
   Vdbe *p                    /* The VDBE */
 ){
@@ -9005,7 +9006,7 @@ int execOpRewind(Vdbe *p, Op *pOp){
   return res;
 }
 
-int execOpColumn(Vdbe *p, Op *pOp){
+__attribute__((optnone)) int execOpColumn(Vdbe *p, Op *pOp){
   u32 p2;            /* column number to retrieve */
   VdbeCursor *pC;    /* The VDBE cursor */
   BtCursor *pCrsr;   /* The B-Tree cursor corresponding to pC */
@@ -9238,6 +9239,7 @@ op_column_restart:
       pDest->enc = encoding;
       if( pDest->szMalloc < len+2 ){
         pDest->flags = MEM_Null;
+        sqlite3VdbeMemGrow(pDest, len+2, 0);
       }else{
         pDest->z = pDest->zMalloc;
       }
@@ -9492,4 +9494,121 @@ void execComparison(Vdbe *p, Op *pOp){
 
   jump_to_p2:
   p->pc = pOp->p2;
+}
+
+void execAggrStepZero(Vdbe *p, Op *pOp){
+    int n;
+  sqlite3_context *pCtx;
+
+  assert( pOp->p4type==P4_FUNCDEF );
+  n = pOp->p5;
+  assert( pOp->p3>0 && pOp->p3<=(p->nMem+1 - p->nCursor) );
+  assert( n==0 || (pOp->p2>0 && pOp->p2+n<=(p->nMem+1 - p->nCursor)+1) );
+  assert( pOp->p3<pOp->p2 || pOp->p3>=pOp->p2+n );
+  pCtx = sqlite3DbMallocRawNN(p->db, n*sizeof(sqlite3_value*) +
+               (sizeof(pCtx[0]) + sizeof(Mem) - sizeof(sqlite3_value*)));
+  pCtx->pMem = 0;
+  pCtx->pOut = (Mem*)&(pCtx->argv[n]);
+  sqlite3VdbeMemInit(pCtx->pOut, p->db, MEM_Null);
+  pCtx->pFunc = pOp->p4.pFunc;
+  pCtx->iOp = (int)(pOp - p->aOp);
+  pCtx->pVdbe = p;
+  pCtx->skipFlag = 0;
+  pCtx->isError = 0;
+  pCtx->enc = p->db->enc;
+  pCtx->argc = n;
+  pOp->p4type = P4_FUNCCTX;
+  pOp->p4.pCtx = pCtx;
+
+  /* OP_AggInverse must have P1==1 and OP_AggStep must have P1==0 */
+  assert( pOp->p1==(pOp->opcode==OP_AggInverse) );
+
+  pOp->opcode = OP_AggStep1;
+}
+
+void execAggrStepOne(Vdbe *p, Op *pOp){
+  int i;
+  sqlite3_context *pCtx;
+  Mem *pMem;
+
+  assert( pOp->p4type==P4_FUNCCTX );
+  pCtx = pOp->p4.pCtx;
+  pMem = &p->aMem[pOp->p3];
+
+#ifdef SQLITE_DEBUG
+  if( pOp->p1 ){
+    /* This is an OP_AggInverse call.  Verify that xStep has always
+    ** been called at least once prior to any xInverse call. */
+    assert( pMem->uTemp==0x1122e0e3 );
+  }else{
+    /* This is an OP_AggStep call.  Mark it as such. */
+    pMem->uTemp = 0x1122e0e3;
+  }
+#endif
+
+  /* If this function is inside of a trigger, the register array in aMem[]
+  ** might change from one evaluation to the next.  The next block of code
+  ** checks to see if the register array has changed, and if so it
+  ** reinitializes the relavant parts of the sqlite3_context object */
+  if( pCtx->pMem != pMem ){
+    pCtx->pMem = pMem;
+    for(i=pCtx->argc-1; i>=0; i--) pCtx->argv[i] = &p->aMem[pOp->p2+i];
+  }
+
+#ifdef SQLITE_DEBUG
+  for(i=0; i<pCtx->argc; i++){
+    assert( memIsValid(pCtx->argv[i]) );
+    REGISTER_TRACE(pOp->p2+i, pCtx->argv[i]);
+  }
+#endif
+
+  pMem->n++;
+  assert( pCtx->pOut->flags==MEM_Null );
+  assert( pCtx->isError==0 );
+  assert( pCtx->skipFlag==0 );
+#ifndef SQLITE_OMIT_WINDOWFUNC
+  if( pOp->p1 ){
+    (pCtx->pFunc->xInverse)(pCtx,pCtx->argc,pCtx->argv);
+  }else
+#endif
+  (pCtx->pFunc->xSFunc)(pCtx,pCtx->argc,pCtx->argv); /* IMP: R-24505-23230 */
+
+  if( pCtx->isError ){
+    if( pCtx->isError>0 ){
+      sqlite3VdbeError(p, "%s", sqlite3_value_text(pCtx->pOut));
+      int rc = pCtx->isError;
+    }
+    if( pCtx->skipFlag ){
+      assert( pOp[-1].opcode==OP_CollSeq );
+      i = pOp[-1].p1;
+      if( i ) sqlite3VdbeMemSetInt64(&p->aMem[i], 1);
+      pCtx->skipFlag = 0;
+    }
+    sqlite3VdbeMemRelease(pCtx->pOut);
+    pCtx->pOut->flags = MEM_Null;
+    pCtx->isError = 0;
+  }
+  assert( pCtx->pOut->flags==MEM_Null );
+  assert( pCtx->skipFlag==0 );
+}
+
+void execAggrFinal(Vdbe *p, Op *pOp){
+  int rc;
+    Mem *pMem;
+  assert( pOp->p1>0 && pOp->p1<=(p->nMem+1 - p->nCursor) );
+  assert( pOp->p3==0 || pOp->opcode==OP_AggValue );
+  pMem = &p->aMem[pOp->p1];
+  assert( (pMem->flags & ~(MEM_Null|MEM_Agg))==0 );
+#ifndef SQLITE_OMIT_WINDOWFUNC
+  if( pOp->p3 ){
+    memAboutToChange(p, &aMem[pOp->p3]);
+    rc = sqlite3VdbeMemAggValue(pMem, &p->aMem[pOp->p3], pOp->p4.pFunc);
+    pMem = &p->aMem[pOp->p3];
+  }else
+#endif
+  {
+    rc = sqlite3VdbeMemFinalize(pMem, pOp->p4.pFunc);
+  }
+
+  sqlite3VdbeChangeEncoding(pMem, p->db->enc);
 }

@@ -30,6 +30,17 @@ void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
+void execOpMultiply(Mem *pIn1, Mem *pIn2, Mem *pOut) {
+  u16 flag;
+  if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
+    pOut->u.i = pIn1->u.i * pIn2->u.i;
+    flag = MEM_Int;
+  } else {
+    pOut->u.r = pIn2->u.r * pIn1->u.r;
+    flag = MEM_Real;
+  }
+  pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
+}
 void genOpRewind(wasmblr::CodeGenerator &cg, Vdbe *p, Op pOp, int stackAlloc,
                  int func_two_zero, int nextPc) {
   VdbeCursor *pC = p->apCsr[pOp.p1];
@@ -141,6 +152,7 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           cg.i32.const_((int)&pOp->p1);
           cg.i32.const_(1);
           cg.i32.store();
+          // deliberate fall
         }
         case OP_Goto: {  // GOTO P2
           nextPc = pOp->p2;
@@ -227,6 +239,7 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           { cg.i32.const_(pOp->p2); }
           cg.end();
           cg.i32.store();
+          break;
         }
         case OP_OpenRead:
         case OP_OpenWrite: {
@@ -279,11 +292,19 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           cg.call_indirect(func_three_zero);
           break;
         }
-        case OP_Subtract: {  // r[P3]=r[P1]+r[P2]
+        case OP_Subtract: {  // r[P3]=r[P2]-r[P1]
           cg.i32.const_((int)&p->aMem[pOp->p1]);
           cg.i32.const_((int)&p->aMem[pOp->p2]);
           cg.i32.const_((int)&p->aMem[pOp->p3]);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execOpSubtract));
+          cg.call_indirect(func_three_zero);
+          break;
+        }
+        case OP_Multiply: {  // r[P3]=r[P1]*r[P2]
+          cg.i32.const_((int)&p->aMem[pOp->p1]);
+          cg.i32.const_((int)&p->aMem[pOp->p2]);
+          cg.i32.const_((int)&p->aMem[pOp->p3]);
+          cg.i32.const_(reinterpret_cast<intptr_t>(&execOpMultiply));
           cg.call_indirect(func_three_zero);
           break;
         }
@@ -370,10 +391,30 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
         case OP_Le:
         case OP_Gt:
         case OP_Ge: {
+          conditionalJump = true;
           cg.i32.const_((int)p);
           cg.i32.const_((int)pOp);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execComparison));
           cg.call_indirect(func_two_zero);
+          break;
+        }
+        case OP_AggStep: {
+          execAggrStepZero(p, pOp);
+          /* no break */ deliberate_fall_through
+        }
+        case OP_AggStep1: {
+          cg.i32.const_((int)p);
+          cg.i32.const_((int)pOp);
+          cg.i32.const_(reinterpret_cast<intptr_t>(&execAggrStepOne));
+          cg.call_indirect(func_two_zero);
+          break;
+        }
+        case OP_AggFinal: {
+          cg.i32.const_((int)p);
+          cg.i32.const_((int)pOp);
+          cg.i32.const_(reinterpret_cast<intptr_t>(&execAggrFinal));
+          cg.call_indirect(func_two_zero);
+          break;
         }
         default: {
           // Return Opcode to notify to implement
@@ -409,6 +450,7 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
 
 extern "C" {
 
+__attribute__((optnone)) 
 int sqlite3VdbeExecJIT(Vdbe *p) {
   int rc;
   if (p->jitCode == NULL) {
@@ -422,7 +464,7 @@ int sqlite3VdbeExecJIT(Vdbe *p) {
       rc = sqlite3VdbeExec(p);
     }
   }
-  // printf("pResultRow: %lld\n", p->pResultRow->u.i);
+  printf("pResultRow: %lld\n", p->pResultRow->u.i);
   // printf("rc: %d\n", rc);
   return rc;
 }
