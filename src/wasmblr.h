@@ -924,16 +924,13 @@ inline void CodeGenerator::br_table(std::vector<uint32_t> labelidxs,
 
 inline void CodeGenerator::end() { emit(0x0b); }
 inline void CodeGenerator::call(uint32_t fn_idx) {
-  assert(fn_idx < functions_.size() + imported_functions_.size() &&
-         "function index does not exist");
+  assert(fn_idx < functions_.size() + imported_functions_.size());
   emit(0x10);
   emit(encode_unsigned(fn_idx));
 }
 
 inline void CodeGenerator::call_indirect(uint32_t typeidx,
                                          uint32_t tableidx = 0) {
-  assert(fn_idx < functions_.size() + imported_functions_.size() &&
-         "function index does not exist");
   emit(0x11);
   emit(encode_unsigned(typeidx));
   emit(encode_unsigned(tableidx));

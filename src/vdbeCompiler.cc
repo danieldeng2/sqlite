@@ -126,7 +126,12 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
       bool conditionalJump = false;
 
       switch (pOp->opcode) {
-        case OP_Init:
+        case OP_Init: {
+          // For self altering instructions, treat the address as parameter
+          cg.i32.const_((int)&pOp->p1);
+          cg.i32.const_(1);
+          cg.i32.store();
+        }
         case OP_Goto: {  // GOTO P2
           nextPc = pOp->p2;
           break;
@@ -251,7 +256,9 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           break;
         }
         default: {
-          printf("TODO: index: %d OP: %d\n", i, pOp->opcode);
+          // Return Opcode to notify to implement
+          nextPc = i;
+          returnValue = 100000 + pOp->opcode;
         }
       }
 
@@ -284,11 +291,16 @@ extern "C" {
 
 int sqlite3VdbeExecJIT(Vdbe *p) {
   int rc;
-  // printf("p: %d \n", (int)p);
   if (p->jitCode == NULL) {
     rc = sqlite3VdbeExec(p);
   } else {
+    printf("p: %d \n", (int)p);
     rc = ((jitOp)p->jitCode)();
+
+    if (rc > 100000) {
+      printf("TODO: Implement OP %d \n", rc - 100000);
+      rc = sqlite3VdbeExec(p);
+    }
   }
   // printf("pResultRow: %lld\n", p->pResultRow->u.i);
   // printf("rc: %d\n", rc);
