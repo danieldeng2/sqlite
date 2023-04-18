@@ -9297,5 +9297,199 @@ int execOpNext(Vdbe* p, Op pOp){
   }
   rc = SQLITE_OK;
   pC->nullRow = 1;
+  p->pc++;
   return rc;
+}
+
+int execOpFunction(Vdbe *p, Op *pOp){
+  int i;
+  sqlite3_context *pCtx;
+  int rc = 0;
+
+  assert( pOp->p4type==P4_FUNCCTX );
+  pCtx = pOp->p4.pCtx;
+
+  /* If this function is inside of a trigger, the register array in aMem[]
+  ** might change from one evaluation to the next.  The next block of code
+  ** checks to see if the register array has changed, and if so it
+  ** reinitializes the relavant parts of the sqlite3_context object */
+  Mem *pOut = &p->aMem[pOp->p3];
+  if( pCtx->pOut != pOut ){
+    pCtx->pVdbe = p;
+    pCtx->pOut = pOut;
+    pCtx->enc = p->db->enc;
+    for(i=pCtx->argc-1; i>=0; i--) pCtx->argv[i] = &p->aMem[pOp->p2+i];
+  }
+  assert( pCtx->pVdbe==p );
+
+  memAboutToChange(p, pOut);
+#ifdef SQLITE_DEBUG
+  for(i=0; i<pCtx->argc; i++){
+    assert( memIsValid(pCtx->argv[i]) );
+    REGISTER_TRACE(pOp->p2+i, pCtx->argv[i]);
+  }
+#endif
+  MemSetTypeFlag(pOut, MEM_Null);
+  assert( pCtx->isError==0 );
+  (*pCtx->pFunc->xSFunc)(pCtx, pCtx->argc, pCtx->argv);/* IMP: R-24505-23230 */
+
+  /* If the function returned an error, throw an exception */
+  if( pCtx->isError ){
+    if( pCtx->isError>0 ){
+      sqlite3VdbeError(p, "%s", sqlite3_value_text(pOut));
+      rc = pCtx->isError;
+    }
+    sqlite3VdbeDeleteAuxData(p->db, &p->pAuxData, pCtx->iOp, pOp->p1);
+    pCtx->isError = 0;
+  }
+
+  assert( (pOut->flags&MEM_Str)==0 
+       || pOut->enc==p->db->enc
+       || db->mallocFailed );
+  assert( !sqlite3VdbeMemTooBig(pOut) );
+
+  REGISTER_TRACE(pOp->p3, pOut);
+  UPDATE_MAX_BLOBSIZE(pOut);
+  return rc;
+}
+
+void execComparison(Vdbe *p, Op *pOp){
+  int res, res2;      /* Result of the comparison of pIn1 against pIn3 */
+  char affinity;      /* Affinity to use for comparison */
+  u16 flags1;         /* Copy of initial value of pIn1->flags */
+  u16 flags3;         /* Copy of initial value of pIn3->flags */
+  int iCompare = 0;          /* Result of last comparison */
+
+  Mem *pIn1 = &p->aMem[pOp->p1];
+  Mem *pIn3 = &p->aMem[pOp->p3];
+
+  flags1 = pIn1->flags;
+  flags3 = pIn3->flags;
+  if( (flags1 & flags3 & MEM_Int)!=0 ){
+    /* Common case of comparison of two integers */
+    if( pIn3->u.i > pIn1->u.i ){
+      if( sqlite3aGTb[pOp->opcode] ){
+        goto jump_to_p2;
+      }
+      iCompare = +1;
+      VVA_ONLY( iCompareIsInit = 1; )
+    }else if( pIn3->u.i < pIn1->u.i ){
+      if( sqlite3aLTb[pOp->opcode] ){
+        goto jump_to_p2;
+      }
+      iCompare = -1;
+      VVA_ONLY( iCompareIsInit = 1; )
+    }else{
+      if( sqlite3aEQb[pOp->opcode] ){
+        goto jump_to_p2;
+      }
+      iCompare = 0;
+      VVA_ONLY( iCompareIsInit = 1; )
+    }
+    VdbeBranchTaken(0, (pOp->p5 & SQLITE_NULLEQ)?2:3);
+    p->pc++;
+    return;
+  }
+  if( (flags1 | flags3)&MEM_Null ){
+    /* One or both operands are NULL */
+    if( pOp->p5 & SQLITE_NULLEQ ){
+      /* If SQLITE_NULLEQ is set (which will only happen if the operator is
+      ** OP_Eq or OP_Ne) then take the jump or not depending on whether
+      ** or not both operands are null.
+      */
+      assert( (flags1 & MEM_Cleared)==0 );
+      assert( (pOp->p5 & SQLITE_JUMPIFNULL)==0 || CORRUPT_DB );
+      testcase( (pOp->p5 & SQLITE_JUMPIFNULL)!=0 );
+      if( (flags1&flags3&MEM_Null)!=0
+       && (flags3&MEM_Cleared)==0
+      ){
+        res = 0;  /* Operands are equal */
+      }else{
+        res = ((flags3 & MEM_Null) ? -1 : +1);  /* Operands are not equal */
+      }
+    }else{
+      /* SQLITE_NULLEQ is clear and at least one operand is NULL,
+      ** then the result is always NULL.
+      ** The jump is taken if the SQLITE_JUMPIFNULL bit is set.
+      */
+      VdbeBranchTaken(2,3);
+      if( pOp->p5 & SQLITE_JUMPIFNULL ){
+        goto jump_to_p2;
+      }
+      iCompare = 1;    /* Operands are not equal */
+      VVA_ONLY( iCompareIsInit = 1; )
+      p->pc++;
+      return;
+    }
+  }else{
+    /* Neither operand is NULL and we couldn't do the special high-speed
+    ** integer comparison case.  So do a general-case comparison. */
+    affinity = pOp->p5 & SQLITE_AFF_MASK;
+    if( affinity>=SQLITE_AFF_NUMERIC ){
+      if( (flags1 | flags3)&MEM_Str ){
+        if( (flags1 & (MEM_Int|MEM_IntReal|MEM_Real|MEM_Str))==MEM_Str ){
+          applyNumericAffinity(pIn1,0);
+          testcase( flags3==pIn3->flags );
+          flags3 = pIn3->flags;
+        }
+        if( (flags3 & (MEM_Int|MEM_IntReal|MEM_Real|MEM_Str))==MEM_Str ){
+          applyNumericAffinity(pIn3,0);
+        }
+      }
+    }else if( affinity==SQLITE_AFF_TEXT && ((flags1 | flags3) & MEM_Str)!=0 ){
+      if( (flags1 & MEM_Str)==0 && (flags1&(MEM_Int|MEM_Real|MEM_IntReal))!=0 ){
+        testcase( pIn1->flags & MEM_Int );
+        testcase( pIn1->flags & MEM_Real );
+        testcase( pIn1->flags & MEM_IntReal );
+        sqlite3VdbeMemStringify(pIn1, p->db->enc, 1);
+        testcase( (flags1&MEM_Dyn) != (pIn1->flags&MEM_Dyn) );
+        flags1 = (pIn1->flags & ~MEM_TypeMask) | (flags1 & MEM_TypeMask);
+        if( NEVER(pIn1==pIn3) ) flags3 = flags1 | MEM_Str;
+      }
+      if( (flags3 & MEM_Str)==0 && (flags3&(MEM_Int|MEM_Real|MEM_IntReal))!=0 ){
+        testcase( pIn3->flags & MEM_Int );
+        testcase( pIn3->flags & MEM_Real );
+        testcase( pIn3->flags & MEM_IntReal );
+        sqlite3VdbeMemStringify(pIn3, p->db->enc, 1);
+        testcase( (flags3&MEM_Dyn) != (pIn3->flags&MEM_Dyn) );
+        flags3 = (pIn3->flags & ~MEM_TypeMask) | (flags3 & MEM_TypeMask);
+      }
+    }
+    assert( pOp->p4type==P4_COLLSEQ || pOp->p4.pColl==0 );
+    res = sqlite3MemCompare(pIn3, pIn1, pOp->p4.pColl);
+  }
+
+  /* At this point, res is negative, zero, or positive if reg[P1] is
+  ** less than, equal to, or greater than reg[P3], respectively.  Compute
+  ** the answer to this operator in res2, depending on what the comparison
+  ** operator actually is.  The next block of code depends on the fact
+  ** that the 6 comparison operators are consecutive integers in this
+  ** order:  NE, EQ, GT, LE, LT, GE */
+  assert( OP_Eq==OP_Ne+1 ); assert( OP_Gt==OP_Ne+2 ); assert( OP_Le==OP_Ne+3 );
+  assert( OP_Lt==OP_Ne+4 ); assert( OP_Ge==OP_Ne+5 );
+  if( res<0 ){
+    res2 = sqlite3aLTb[pOp->opcode];
+  }else if( res==0 ){
+    res2 = sqlite3aEQb[pOp->opcode];
+  }else{
+    res2 = sqlite3aGTb[pOp->opcode];
+  }
+  iCompare = res;
+  VVA_ONLY( iCompareIsInit = 1; )
+
+  /* Undo any changes made by applyAffinity() to the input registers. */
+  assert( (pIn3->flags & MEM_Dyn) == (flags3 & MEM_Dyn) );
+  pIn3->flags = flags3;
+  assert( (pIn1->flags & MEM_Dyn) == (flags1 & MEM_Dyn) );
+  pIn1->flags = flags1;
+
+  VdbeBranchTaken(res2!=0, (pOp->p5 & SQLITE_NULLEQ)?2:3);
+  if( res2 ){
+    goto jump_to_p2;
+  }
+  p->pc++;
+  return;
+
+  jump_to_p2:
+  p->pc = pOp->p2;
 }

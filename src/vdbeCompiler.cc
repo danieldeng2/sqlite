@@ -187,9 +187,9 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           break;
         }
         case OP_Null: {
-          u16 nullFlag = pOp->p1 ? (MEM_Null|MEM_Cleared) : MEM_Null;
+          u16 nullFlag = pOp->p1 ? (MEM_Null | MEM_Cleared) : MEM_Null;
 
-          for (int j = pOp->p2; j <= pOp->p3; j++){
+          for (int j = pOp->p2; j <= pOp->p3; j++) {
             Mem *pOut = &p->aMem[j];
             cg.i32.const_((int)&pOut->n);
             cg.i32.const_(0);
@@ -200,6 +200,33 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
             cg.i32.store16();
           }
           break;
+        }
+        case OP_Once: {
+          // assuming no pFrame
+
+          conditionalJump = true;
+          cg.i32.const_((int32_t)&p->pc);
+
+          // dynamic parameters
+          cg.i32.const_((intptr_t)&pOp->p1);
+          cg.i32.load();
+          cg.i32.const_((intptr_t)&p->aOp[0].p1);
+          cg.i32.load();
+          cg.i32.sub();
+
+          // if not equal
+          cg.if_(cg.i32);
+          {
+            cg.i32.const_((intptr_t)&pOp->p1);
+            cg.i32.const_((intptr_t)&p->aOp[0].p1);
+            cg.i32.load();
+            cg.i32.store();
+            { cg.i32.const_(nextPc); }
+          }
+          cg.else_();
+          { cg.i32.const_(pOp->p2); }
+          cg.end();
+          cg.i32.store();
         }
         case OP_OpenRead:
         case OP_OpenWrite: {
@@ -232,6 +259,14 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           cg.i32.const_((int)p);
           cg.i32.const_((int)pOp);
           cg.i32.const_(reinterpret_cast<intptr_t>(&execOpColumn));
+          cg.call_indirect(func_two_one);
+          cg.drop();
+          break;
+        }
+        case OP_Function: {
+          cg.i32.const_((int)p);
+          cg.i32.const_((int)pOp);
+          cg.i32.const_(reinterpret_cast<intptr_t>(&execOpFunction));
           cg.call_indirect(func_two_one);
           cg.drop();
           break;
@@ -299,6 +334,46 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           cg.call_indirect(func_two_one);
           cg.drop();
           break;
+        }
+        case OP_String8: {
+          pOp->p1 = 0x3fffffff & (int)strlen(pOp->p4.z);
+          pOp->opcode = OP_String;
+          /* no break */ deliberate_fall_through
+        }
+        case OP_String: {  // assume not blob
+          Mem *pOut = &p->aMem[pOp->p2];
+
+          // pOut->flags = MEM_Str|MEM_Static|MEM_Term;
+          cg.i32.const_((int)&pOut->flags);
+          cg.i32.const_(MEM_Str | MEM_Static | MEM_Term);
+          cg.i32.store16();
+
+          // pOut->z = pOp->p4.z;
+          cg.i32.const_((int)&pOut->z);
+          cg.i32.const_((int)pOp->p4.z);
+          cg.i32.store();
+
+          // pOut->n = pOp->p1;
+          cg.i32.const_((int)&pOut->n);
+          cg.i32.const_(pOp->p1);
+          cg.i32.store();
+
+          // pOut->enc = p->db->enc;
+          cg.i32.const_((int)&pOut->enc);
+          cg.i32.const_(p->db->enc);
+          cg.i32.store();
+          break;
+        }
+        case OP_Eq:
+        case OP_Ne:
+        case OP_Lt:
+        case OP_Le:
+        case OP_Gt:
+        case OP_Ge: {
+          cg.i32.const_((int)p);
+          cg.i32.const_((int)pOp);
+          cg.i32.const_(reinterpret_cast<intptr_t>(&execComparison));
+          cg.call_indirect(func_two_zero);
         }
         default: {
           // Return Opcode to notify to implement
