@@ -14,7 +14,7 @@ void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
     pOut->u.i = pIn1->u.i + pIn2->u.i;
     flag = MEM_Int;
   } else {
-    pOut->u.r = pIn1->u.r + pIn2->u.r;
+    pOut->u.r = sqlite3VdbeRealValue(pIn1) + sqlite3VdbeRealValue(pIn2);
     flag = MEM_Real;
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
@@ -25,7 +25,7 @@ void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
     pOut->u.i = pIn1->u.i - pIn2->u.i;
     flag = MEM_Int;
   } else {
-    pOut->u.r = pIn2->u.r - pIn1->u.r;
+    pOut->u.r = sqlite3VdbeRealValue(pIn2) - sqlite3VdbeRealValue(pIn1);
     flag = MEM_Real;
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
@@ -36,7 +36,7 @@ void execOpMultiply(Mem *pIn1, Mem *pIn2, Mem *pOut) {
     pOut->u.i = pIn1->u.i * pIn2->u.i;
     flag = MEM_Int;
   } else {
-    pOut->u.r = pIn2->u.r * pIn1->u.r;
+    pOut->u.r = sqlite3VdbeRealValue(pIn2) * sqlite3VdbeRealValue(pIn1);
     flag = MEM_Real;
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
@@ -326,6 +326,44 @@ std::vector<uint8_t> genFunction(Vdbe *p) {
           returnValue = SQLITE_ROW;
           break;
         }
+        case OP_Copy: { // r[P2@P3+1]=r[P1@P3+1]
+          // int i
+          int i_index = cg.locals().size();
+          int increment = 40;  // size of Mem
+          cg.local(cg.i32);
+          
+          // i = 0
+          cg.i32.const_(0);
+          cg.local.set(i_index);
+
+          cg.loop(cg.void_);
+          {
+            cg.local.get(i_index);
+            cg.i32.const_((intptr_t) &p->aMem[pOp->p2]);
+            cg.i32.add();
+
+            cg.local.get(i_index);
+            cg.i32.const_((intptr_t) &p->aMem[pOp->p1]);
+            cg.i32.add();
+
+            cg.i32.const_(MEM_Ephem);
+            cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeMemShallowCopy));
+            cg.call_indirect(func_three_zero);
+
+            // i++
+            cg.local.get(i_index);
+            cg.i32.const_(increment);
+            cg.i32.add();
+
+            // i < pOp->p3?
+            cg.local.tee(i_index);
+            cg.i32.const_((pOp->p3 + 1) * increment);
+            cg.i32.ne();
+            cg.br_if(0);
+          }
+          cg.end();
+          break;
+        }
         case OP_DecrJumpZero: {
           cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
           cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
@@ -452,20 +490,16 @@ extern "C" {
 
 __attribute__((optnone)) 
 int sqlite3VdbeExecJIT(Vdbe *p) {
-  int rc;
   if (p->jitCode == NULL) {
-    rc = sqlite3VdbeExec(p);
-  } else {
-    printf("p: %d \n", (int)p);
-    rc = ((jitOp)p->jitCode)();
+    return sqlite3VdbeExec(p);
+  } 
 
-    if (rc > 100000) {
-      printf("TODO: Implement OP %d \n", rc - 100000);
-      rc = sqlite3VdbeExec(p);
-    }
+  int rc = ((jitOp)p->jitCode)();
+
+  if (rc > 100000) {
+    printf("TODO: Implement OP %d \n", rc - 100000);
+    rc = sqlite3VdbeExec(p);
   }
-  printf("pResultRow: %lld\n", p->pResultRow->u.i);
-  // printf("rc: %d\n", rc);
   return rc;
 }
 
