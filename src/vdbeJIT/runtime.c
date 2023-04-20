@@ -2,6 +2,20 @@
 
 #define isSorter(x) ((x)->eCurType == CURTYPE_SORTER)
 
+typedef int (*jitProgram)();
+
+__attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
+  if (p->jitCode == NULL) return sqlite3VdbeExec(p);
+
+  int rc = ((jitProgram)p->jitCode)();
+
+  if (rc > 100000) {
+    printf("TODO: Implement OP %d \n", rc - 100000);
+    rc = sqlite3VdbeExec(p);
+  }
+  return rc;
+}
+
 // TODO: replace with assembly
 void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
