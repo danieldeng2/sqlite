@@ -557,6 +557,9 @@ extern const u8 sqlite3SmallTypeSizes[];
 /*
 ** Function prototypes
 */
+VdbeCursor *allocateCursor(Vdbe *p, int iCur, int nField, u8 eCurType);
+void applyNumericAffinity(Mem *pRec, int bTryForInt);
+
 void sqlite3VdbeError(Vdbe*, const char *, ...);
 void sqlite3VdbeFreeCursor(Vdbe *, VdbeCursor*);
 void sqlite3VdbeFreeCursorNN(Vdbe*,VdbeCursor*);
@@ -580,17 +583,6 @@ int sqlite3VdbeIdxKeyCompare(sqlite3*,VdbeCursor*,UnpackedRecord*,int*);
 int sqlite3VdbeIdxRowid(sqlite3*, BtCursor*, i64*);
 int sqlite3VdbeExec(Vdbe*);
 int sqlite3VdbeExecJIT(Vdbe*);
-void execBtreeFirst(BtCursor *, int *);
-void beginTransaction(Btree *pBt, int p2);
-int execOpenReadWrite(Vdbe *p, Op *pOp);
-int execOpRewind(Vdbe *p, Op *pOp);
-int execOpColumn(Vdbe *p, Op *pOp);
-int execOpNext(Vdbe* p, Op pOp);
-int execOpFunction(Vdbe *p, Op *pOp);
-void execComparison(Vdbe *p, Op *pOp);
-void execAggrStepZero(Vdbe *p, Op *pOp);
-void execAggrStepOne(Vdbe *p, Op *pOp);
-void execAggrFinal(Vdbe *p, Op *pOp);
 #if !defined(SQLITE_OMIT_EXPLAIN) || defined(SQLITE_ENABLE_BYTECODE_VTAB)
 int sqlite3VdbeNextOpcode(Vdbe*,Mem*,int,int*,int*,Op**);
 char *sqlite3VdbeDisplayP4(sqlite3*,Op*);

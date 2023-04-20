@@ -12,6 +12,10 @@
 ** Internal interface definitions for SQLite.
 **
 */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef SQLITEINT_H
 #define SQLITEINT_H
 
@@ -5579,3 +5583,7 @@ sqlite3_uint64 sqlite3Hwtime(void);
 #endif
 
 #endif /* SQLITEINT_H */
+
+#ifdef __cplusplus
+}
+#endif

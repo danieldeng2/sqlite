@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstdint>
@@ -302,14 +303,6 @@ struct Function {
   };
 };
 
-struct TypeDef {
-  TypeDef(std::vector<uint8_t> input_types_, std::vector<uint8_t> output_types_)
-      : input_types(input_types_), output_types(output_types_) {}
-
-  std::vector<uint8_t> input_types;
-  std::vector<uint8_t> output_types;
-};
-
 struct CodeGenerator {
   // API
   Local local;
@@ -338,7 +331,8 @@ struct CodeGenerator {
   void br_if(uint32_t labelidx);
   void end();
   void call(uint32_t funcidx);
-  void call_indirect(uint32_t typeidx, uint32_t tableidx);
+  void call_indirect(std::vector<uint8_t> input_types,
+                     std::vector<uint8_t> output_types, uint32_t tableidx);
 
   void export_(uint32_t fn_idx, std::string name);
 
@@ -346,10 +340,6 @@ struct CodeGenerator {
   void elem(uint32_t fn_idx);
 
   // returns function index
-
-  uint32_t type_def(std::vector<uint8_t> input_types,
-                    std::vector<uint8_t> output_types);
-
   uint32_t function(std::vector<uint8_t> input_types,
                     std::vector<uint8_t> output_types,
                     std::function<void()> body);
@@ -375,7 +365,7 @@ struct CodeGenerator {
   CodeGenerator(const CodeGenerator&) = delete;
   CodeGenerator(CodeGenerator&&) = delete;
 
-  std::vector<TypeDef> type_definitions_;
+  std::vector<std::vector<std::vector<uint8_t>>> type_definitions_;
   std::vector<Function> imported_functions_;
   std::vector<Function> functions_;
   std::vector<uint32_t> elem_functions_;
@@ -905,13 +895,9 @@ inline void CodeGenerator::loop(uint8_t type) {
   emit(type);
 }
 
-inline void CodeGenerator::return_() {
-  emit(0x0f);
-}
+inline void CodeGenerator::return_() { emit(0x0f); }
 
-inline void CodeGenerator::drop() {
-  emit(0x1a);
-}
+inline void CodeGenerator::drop() { emit(0x1a); }
 
 inline void CodeGenerator::if_(uint8_t type) {
   auto t = pop();
@@ -949,8 +935,22 @@ inline void CodeGenerator::call(uint32_t fn_idx) {
   emit(encode_unsigned(fn_idx));
 }
 
-inline void CodeGenerator::call_indirect(uint32_t typeidx,
+inline void CodeGenerator::call_indirect(std::vector<uint8_t> input_types,
+                                         std::vector<uint8_t> output_types,
                                          uint32_t tableidx = 0) {
+  uint32_t typeidx;
+
+  std::vector<std::vector<uint8_t>> new_type{input_types, output_types};
+  auto iterator =
+      std::find(type_definitions_.begin(), type_definitions_.end(), new_type);
+
+  if (iterator != type_definitions_.end()) {
+    typeidx = iterator - type_definitions_.begin();
+  } else {
+    typeidx = type_definitions_.size();
+    type_definitions_.emplace_back(new_type);
+  }
+
   emit(0x11);
   emit(encode_unsigned(typeidx));
   emit(encode_unsigned(tableidx));
@@ -966,12 +966,6 @@ inline void CodeGenerator::elem(uint32_t fn) {
 
 inline void CodeGenerator::start(uint32_t fn) { start_function_ = fn; }
 
-inline uint32_t CodeGenerator::type_def(std::vector<uint8_t> input_types,
-                                        std::vector<uint8_t> output_types) {
-  auto idx = type_definitions_.size();
-  type_definitions_.emplace_back(input_types, output_types);
-  return idx;
-}
 inline uint32_t CodeGenerator::function(std::vector<uint8_t> input_types,
                                         std::vector<uint8_t> output_types,
                                         std::function<void()> body) {
@@ -1007,16 +1001,42 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
   concat(all_functions, imported_functions_);
   concat(all_functions, functions_);
 
+  std::vector<uint8_t> code_section_bytes;
+  concat(code_section_bytes, encode_unsigned(functions_.size()));
+  for (auto& f : functions_) {
+    cur_function_ = &f;
+
+    cur_bytes_.clear();
+    f.emit();
+    end();
+    std::vector<uint8_t> body_bytes = cur_bytes_;
+
+    cur_bytes_.clear();
+    concat(cur_bytes_, encode_unsigned(f.locals.size()));
+    for (const auto& l : f.locals) {
+      emit(0x1);
+      emit(l);
+    }
+
+    std::vector<uint8_t> header_bytes = cur_bytes_;
+    auto fn_size = header_bytes.size() + body_bytes.size();
+
+    concat(code_section_bytes, encode_unsigned(fn_size));
+    concat(code_section_bytes, header_bytes);
+    concat(code_section_bytes, body_bytes);
+  }
+  cur_function_ = nullptr;
+
   concat(type_section_bytes,
          encode_unsigned(type_definitions_.size() + all_functions.size()));
   for (const auto& f : type_definitions_) {
     type_section_bytes.emplace_back(0x60);
-    concat(type_section_bytes, encode_unsigned(f.input_types.size()));
-    for (const auto& t : f.input_types) {
+    concat(type_section_bytes, encode_unsigned(f[0].size()));
+    for (const auto& t : f[0]) {
       type_section_bytes.emplace_back(t);
     }
-    concat(type_section_bytes, encode_unsigned(f.output_types.size()));
-    for (const auto& t : f.output_types) {
+    concat(type_section_bytes, encode_unsigned(f[1].size()));
+    for (const auto& t : f[1]) {
       type_section_bytes.emplace_back(t);
     }
   }
@@ -1159,32 +1179,6 @@ inline std::vector<uint8_t> CodeGenerator::emit() {
     concat(emitted_bytes, encode_unsigned(elems_section_bytes.size()));
     concat(emitted_bytes, elems_section_bytes);
   }
-
-  std::vector<uint8_t> code_section_bytes;
-  concat(code_section_bytes, encode_unsigned(functions_.size()));
-  for (auto& f : functions_) {
-    cur_function_ = &f;
-
-    cur_bytes_.clear();
-    f.emit();
-    end();
-    std::vector<uint8_t> body_bytes = cur_bytes_;
-
-    cur_bytes_.clear();
-    concat(cur_bytes_, encode_unsigned(f.locals.size()));
-    for (const auto& l : f.locals) {
-      emit(0x1);
-      emit(l);
-    }
-
-    std::vector<uint8_t> header_bytes = cur_bytes_;
-    auto fn_size = header_bytes.size() + body_bytes.size();
-
-    concat(code_section_bytes, encode_unsigned(fn_size));
-    concat(code_section_bytes, header_bytes);
-    concat(code_section_bytes, body_bytes);
-  }
-  cur_function_ = nullptr;
 
   emitted_bytes.emplace_back(0xa);
   concat(emitted_bytes, encode_unsigned(code_section_bytes.size()));
