@@ -1,32 +1,81 @@
+#include <binaryen-c.h>
+
 #include "operations.hh"
 #include "wasmblr.h"
 
-static inline uint32_t genRelocations(wasmblr::CodeGenerator &cg,
-                                      void *jit_address) {
-  return cg.function({}, {}, [&]() {
-    uint32_t count = 1;
-    uint32_t base = 0;
+static inline BinaryenFunctionRef genRelocation(BinaryenModuleRef module,
+                                                void* jit_address) {
+  BinaryenType params = BinaryenTypeCreate({}, 0);
+  BinaryenType results = BinaryenTypeCreate({}, 0);
+  BinaryenType localtypes[1] = {BinaryenTypeInt32()};
 
-    cg.local(cg.i32);
-    cg.refNull(cg.funcRef);
-    cg.i32.const_(count);
-    cg.table.grow(0);
-    cg.local.set(base);
+  BinaryenExpressionRef valueExpr =
+      BinaryenRefNull(module, BinaryenTypeNullFuncref());
+  BinaryenExpressionRef sizeExpr =
+      BinaryenConst(module, BinaryenLiteralInt32(1));
+  BinaryenExpressionRef tableGrow =
+      BinaryenTableGrow(module, "0", valueExpr, sizeExpr);
 
-    cg.local.get(base);
-    cg.i32.const_(0);
-    cg.i32.const_(count);
-    cg.table.init(0, 0);
+  BinaryenExpressionRef tableInit = BinaryenTableInit(
+      module, "0", "0", BinaryenLocalGet(module, 0, BinaryenTypeInt32()),
+      BinaryenConst(module, BinaryenLiteralInt32(0)),
+      BinaryenConst(module, BinaryenLiteralInt32(1)));
+  BinaryenExpressionRef body[] = {
+      BinaryenLocalSet(module, 0, tableGrow), tableInit,
+      BinaryenStore(
+          module, 4, 0, 0,
+          BinaryenConst(module, BinaryenLiteralInt32((intptr_t)jit_address)),
+          BinaryenLocalGet(module, 0, BinaryenTypeInt32()), BinaryenTypeInt32(),
+          "0")};
 
-    cg.i32.const_(reinterpret_cast<intptr_t>(jit_address));
-    cg.local.get(base);
-    cg.i32.const_(0);
-    cg.i32.add();
-    cg.i32.store(2U);
-  });
+  BinaryenExpressionRef bodyBlock =
+      BinaryenBlock(module, NULL, body, sizeof(body) / sizeof(int), NULL);
+
+  BinaryenFunctionRef relocation = BinaryenAddFunction(
+      module, "relocations", params, results, localtypes, 1, bodyBlock);
+
+  return relocation;
 }
 
-static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
+static inline BinaryenFunctionRef genMainFunction(BinaryenModuleRef module,
+                                                  Vdbe* p) {
+  BinaryenType params = BinaryenTypeCreate({}, 0);
+  BinaryenType results = BinaryenTypeInt32();
+
+  BinaryenExpressionRef x = BinaryenConst(module, BinaryenLiteralInt32(69));
+  BinaryenExpressionRef y = BinaryenConst(module, BinaryenLiteralInt32(420));
+  BinaryenExpressionRef add = BinaryenBinary(module, BinaryenAddInt32(), x, y);
+
+  BinaryenFunctionRef adder =
+      BinaryenAddFunction(module, "mainFunction", params, results, NULL, 0, add);
+
+  return adder;
+}
+
+BinaryenModuleRef genModule(Vdbe* p) {
+  BinaryenModuleRef module = BinaryenModuleCreate();
+
+  BinaryenAddMemoryImport(module, "0", "env", "memory", 0);
+  BinaryenAddTableImport(module, "0", "env", "__indirect_function_table");
+  BinaryenAddFunctionImport(module, "stackSave", "env", "stackSave",
+                            BinaryenTypeCreate({}, 0), BinaryenTypeInt32());
+  BinaryenAddFunctionImport(module, "stackRestore", "env", "stackRestore",
+                            BinaryenTypeInt32(), BinaryenTypeCreate({}, 0));
+  BinaryenAddFunctionImport(module, "stackAlloc", "env", "stackAlloc",
+                            BinaryenTypeInt32(), BinaryenTypeInt32());
+
+  BinaryenFunctionRef relocation = genRelocation(module, &(p->jitCode));
+  genMainFunction(module, p);
+
+  const char* funcNames[] = {"mainFunction"};
+
+  BinaryenAddPassiveElementSegment(module, "0", funcNames, 1);
+  BinaryenSetStart(module, relocation);
+
+  return module;
+}
+
+static inline void genMainFunction(wasmblr::CodeGenerator& cg, Vdbe* p,
                                    uint32_t stackAlloc) {
   cg.loop(cg.void_);
   for (int i = 0; i < p->nOp; i++) {
@@ -41,7 +90,7 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
   cg.end();
 
   for (int i = 0; i < p->nOp; i++) {
-    Op *pOp = &p->aOp[i];
+    Op* pOp = &p->aOp[i];
     int nextPc = i + 1;
     int returnValue = -1;
     bool conditionalJump = false;
@@ -155,39 +204,21 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
   };
 }
 
-std::vector<uint8_t> genProgram(Vdbe *p) {
-  wasmblr::CodeGenerator cg;
-  cg.memory(0).import_("env", "memory");
-  cg.table(0U, cg.funcRef).import_("env", "__indirect_function_table");
-  auto stackSave = cg.function({}, {cg.i32}).import_("env", "stackSave");
-  auto stackRestore = cg.function({cg.i32}, {}).import_("env", "stackRestore");
-  auto stackAlloc =
-      cg.function({cg.i32}, {cg.i32}).import_("env", "stackAlloc");
-
-  auto main_func = cg.function({}, {cg.i32}, [&]() {
-    cg.call(stackSave);
-    genMainFunction(cg, p, stackAlloc);
-    cg.call(stackRestore);
-    cg.i32.const_(SQLITE_OK);
-  });
-  auto relocations = genRelocations(cg, &(p->jitCode));
-
-  cg.start(relocations);
-  cg.elem(main_func);
-  return cg.emit();
-}
-
 extern "C" {
-struct WasmModule {
-  std::vector<uint8_t> data;
-};
+typedef BinaryenModuleAllocateAndWriteResult WasmBinary;
 
-WasmModule *jitStatement(Vdbe *p) {
-  std::vector<uint8_t> result = genProgram(p);
-  return new WasmModule{result};
+WasmBinary* jitStatement(Vdbe* p) {
+  WasmBinary* result = (WasmBinary*)malloc(sizeof(WasmBinary));
+  BinaryenModuleRef module = genModule(p);
+  *result = BinaryenModuleAllocateAndWrite(module, NULL);
+  BinaryenModuleDispose(module);
+  return result;
 }
 
-uint8_t *moduleData(WasmModule *mod) { return mod->data.data(); }
-size_t moduleSize(WasmModule *mod) { return mod->data.size(); }
-void freeModule(WasmModule *mod) { delete mod; }
+uint8_t* moduleData(WasmBinary* result) { return (uint8_t*)(result->binary); }
+size_t moduleSize(WasmBinary* result) { return result->binaryBytes; }
+void freeModule(WasmBinary* result) {
+  free(result->binary);
+  free(result);
+}
 }
