@@ -1,11 +1,23 @@
 #include "operations.hh"
+
 #include "runtime.h"
 
-void genOpInit(wasmblr::CodeGenerator &cg, Op *pOp) {
+void genOpInit(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+               int branchChecker) {
   // For self altering instructions, treat the address as parameter
   cg.i32.const_((int)&pOp->p1);
   cg.i32.const_(1);
   cg.i32.store();
+
+  genOpGoto(cg, p, pOp, branchChecker);
+}
+
+void genOpGoto(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+               int branchChecker) {
+  cg.i32.const_((int32_t)&p->pc);
+  cg.i32.const_(pOp->p2);
+  cg.i32.store(2U, 0U);
+  cg.br(branchChecker);
 }
 
 // Begin a transaction on database P1
@@ -65,9 +77,9 @@ void genOpNull(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   }
 }
 
-void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp, int nextPc) {
+void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+               int branchChecker) {
   // assuming no pFrame
-  cg.i32.const_((int32_t)&p->pc);
 
   // dynamic parameters
   cg.i32.const_((intptr_t)&pOp->p1);
@@ -77,18 +89,21 @@ void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp, int nextPc) {
   cg.i32.sub();
 
   // if not equal
-  cg.if_(cg.i32);
+  cg.if_(cg.void_);
   {
     cg.i32.const_((intptr_t)&pOp->p1);
     cg.i32.const_((intptr_t)&p->aOp[0].p1);
     cg.i32.load();
     cg.i32.store();
-    { cg.i32.const_(nextPc); }
   }
   cg.else_();
-  { cg.i32.const_(pOp->p2); }
+  {
+    cg.i32.const_((int32_t)&p->pc);
+    cg.i32.const_(pOp->p2);
+    cg.i32.store();
+    cg.br(branchChecker + 1);
+  }
   cg.end();
-  cg.i32.store();
 }
 
 void genOpReadOpWrite(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
@@ -99,9 +114,9 @@ void genOpReadOpWrite(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.drop();
 }
 
-void genOpRewind(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp, int nextPc) {
+void genOpRewind(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                 int branchCheckerIndex) {
   // Goto beginning of table
-  cg.i32.const_((int32_t)&p->pc);
 
   // For now, call helper function to achieve goal
   cg.i32.const_((int)p);
@@ -109,12 +124,14 @@ void genOpRewind(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp, int nextPc) {
   cg.i32.const_(reinterpret_cast<intptr_t>(&execOpRewind));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
 
-  cg.if_(cg.i32);
-  { cg.i32.const_(pOp->p2); }
-  cg.else_();
-  { cg.i32.const_(nextPc); }
+  cg.if_(cg.void_);
+  {
+    cg.i32.const_((int32_t)&p->pc);
+    cg.i32.const_(pOp->p2);
+    cg.i32.store(2U, 0U);
+    cg.br(branchCheckerIndex + 1);
+  }
   cg.end();
-  cg.i32.store(2U, 0U);
 }
 
 // output=r[P1@P2]
@@ -175,7 +192,7 @@ void genOpCopy(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 }
 
 void genOpDecrJumpZero(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
-                       int nextPc) {
+                       int branchChecker) {
   cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
   cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
   cg.i32.load(2U, 0U);
@@ -183,16 +200,19 @@ void genOpDecrJumpZero(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   cg.i32.sub();
   cg.i32.store();
 
-  cg.i32.const_((int32_t)&p->pc);
   cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
   cg.i32.load(2U, 0U);
 
-  cg.if_(cg.i32);
-  { cg.i32.const_(nextPc); }
+  cg.if_(cg.void_);
+  {}
   cg.else_();
-  { cg.i32.const_(pOp->p2); }
+  {
+    cg.i32.const_((int32_t)&p->pc);
+    cg.i32.const_(pOp->p2);
+    cg.i32.store(2U, 0U);
+    cg.br(branchChecker + 1);
+  }
   cg.end();
-  cg.i32.store(2U, 0U);
 }
 
 // assume not blob
@@ -220,11 +240,13 @@ void genOpString(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.store();
 }
 
-void genComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+void genComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                    int branchChecker) {
   cg.i32.const_((int)p);
   cg.i32.const_((int)pOp);
   cg.i32.const_(reinterpret_cast<intptr_t>(&execComparison));
-  cg.call_indirect({cg.i32, cg.i32}, {});
+  cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
+  cg.br_if(branchChecker);
 }
 
 void genOpAggFinal(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
@@ -329,10 +351,12 @@ void genAggrStepOne(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.call_indirect({cg.i32, cg.i32}, {});
 }
 
-void genOpNext(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+void genOpNext(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+               int branchChecker) {
   cg.i32.const_((int)p);
   cg.i32.const_((int)pOp);
   cg.i32.const_(reinterpret_cast<intptr_t>(&execOpNext));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
   cg.drop();
+  cg.br(branchChecker);
 }

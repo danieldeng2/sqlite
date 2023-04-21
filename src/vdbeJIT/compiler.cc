@@ -1,3 +1,4 @@
+#include "analysis.h"
 #include "operations.hh"
 #include "wasmblr.h"
 
@@ -20,139 +21,139 @@ static inline uint32_t genRelocations(wasmblr::CodeGenerator &cg,
 
     cg.i32.const_(reinterpret_cast<intptr_t>(jit_address));
     cg.local.get(base);
-    cg.i32.const_(0);
-    cg.i32.add();
     cg.i32.store(2U);
   });
 }
 
+static inline void genReturnAndStartAt(wasmblr::CodeGenerator &cg, Vdbe *p,
+                                       int returnValue, int startIndex) {
+  cg.i32.const_((int32_t)&p->pc);
+  cg.i32.const_(startIndex);
+  cg.i32.store(2U, 0U);
+  cg.i32.const_(returnValue);
+  cg.return_();
+}
+
 static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
                                    uint32_t stackAlloc) {
+  std::vector<CodeBlock> codeBlocks = *getCodeBlocks(p);
+
   cg.loop(cg.void_);
-  for (int i = 0; i < p->nOp; i++) {
+  for (int i = 0; i < codeBlocks.size(); i++) {
     cg.block(cg.void_);
   }
 
   cg.i32.const_((int32_t)&p->pc);
   cg.i32.load(2U, 0U);
+
   std::vector<uint32_t> labelidxs;
-  for (int i = 0; i < p->nOp; i++) labelidxs.emplace_back(i);
-  cg.br_table(labelidxs, p->nOp);
+  int blockIndex = 0;
+  for (int i = 0; i < p->nOp; i++) {
+    if (i > codeBlocks[blockIndex].jumpOut) blockIndex++;
+    labelidxs.emplace_back(blockIndex);
+  }
+  cg.br_table(labelidxs, codeBlocks.size());
   cg.end();
 
-  for (int i = 0; i < p->nOp; i++) {
-    Op *pOp = &p->aOp[i];
-    int nextPc = i + 1;
-    int returnValue = -1;
-    bool conditionalJump = false;
+  for (int blockIndex = 0; blockIndex < codeBlocks.size(); blockIndex++) {
+    CodeBlock codeBlock = codeBlocks[blockIndex];
+    int branchCheckerIndex = codeBlocks.size() - blockIndex - 1;
 
-    switch (pOp->opcode) {
-      case OP_Init:
-        genOpInit(cg, pOp);
-        nextPc = pOp->p2;
-        break;
-      case OP_Goto:
-        nextPc = pOp->p2;
-        break;
-      case OP_Halt:
-        returnValue = SQLITE_DONE;
-        break;
-      case OP_Transaction:
-        genOpTransaction(cg, p, pOp, stackAlloc);
-        break;
-      case OP_Integer:
-        genOpInteger(cg, p, pOp);
-        break;
-      case OP_Real:
-        genOpReal(cg, p, pOp);
-        break;
-      case OP_Null:
-        genOpNull(cg, p, pOp);
-        break;
-      case OP_Once:
-        conditionalJump = true;
-        genOpOnce(cg, p, pOp, nextPc);
-        break;
-      case OP_OpenRead:
-      case OP_OpenWrite:
-        genOpReadOpWrite(cg, p, pOp);
-        break;
-      case OP_Rewind:
-        conditionalJump = true;
-        genOpRewind(cg, p, pOp, nextPc);
-        break;
-      case OP_Column:
-        genOpColumn(cg, p, pOp);
-        break;
-      case OP_Function:
-        genOpFunction(cg, p, pOp);
-        break;
-      case OP_Add:
-      case OP_Subtract:
-      case OP_Multiply:
-        genMathOps(cg, p, pOp);
-        break;
-      case OP_ResultRow:
-        genOpResultRow(cg, p, pOp);
-        returnValue = SQLITE_ROW;
-        break;
-      case OP_Copy:
-        genOpCopy(cg, p, pOp);
-        break;
-      case OP_DecrJumpZero:
-        conditionalJump = true;
-        genOpDecrJumpZero(cg, p, pOp, nextPc);
-        break;
-      case OP_Next:
-        conditionalJump = true;
-        genOpNext(cg, p, pOp);
-        break;
-      case OP_String8:
-        pOp->p1 = 0x3fffffff & (int)strlen(pOp->p4.z);
-        pOp->opcode = OP_String;
-        genOpString(cg, p, pOp);
-        break;
-      case OP_String:
-        genOpString(cg, p, pOp);
-        break;
-      case OP_Eq:
-      case OP_Ne:
-      case OP_Lt:
-      case OP_Le:
-      case OP_Gt:
-      case OP_Ge:
-        conditionalJump = true;
-        genComparisons(cg, p, pOp);
-        break;
-      case OP_AggStep:
-        genAggrStepZero(cg, p, pOp);
-        break;
-      case OP_AggStep1:
-        genAggrStepOne(cg, p, pOp);
-        break;
-      case OP_AggFinal:
-        genOpAggFinal(cg, p, pOp);
-        break;
-      default:
-        // Return Opcode to notify to implement
-        nextPc = i;
-        returnValue = 100000 + pOp->opcode;
-    }
+    for (int i = codeBlock.jumpIn; i <= codeBlock.jumpOut; i++) {
+      Op *pOp = &p->aOp[i];
 
-    if (!conditionalJump) {
-      cg.i32.const_((int32_t)&p->pc);
-      cg.i32.const_(nextPc);
-      cg.i32.store(2U, 0U);
-    }
-
-    if (returnValue < 0) {
-      cg.br(p->nOp - i - 1);
-    } else {
-      cg.i32.const_(returnValue);
-      cg.return_();
-    }
+      // for debugging
+      cg.i32.const_(100000 + i);
+      cg.drop();
+      
+      switch (pOp->opcode) {
+        case OP_Init:
+          genOpInit(cg, p, pOp, branchCheckerIndex);
+          break;
+        case OP_Goto:
+          genOpGoto(cg, p, pOp, branchCheckerIndex);
+          break;
+        case OP_Halt:
+          genReturnAndStartAt(cg, p, SQLITE_DONE, i);
+          break;
+        case OP_Transaction:
+          genOpTransaction(cg, p, pOp, stackAlloc);
+          break;
+        case OP_Integer:
+          genOpInteger(cg, p, pOp);
+          break;
+        case OP_Real:
+          genOpReal(cg, p, pOp);
+          break;
+        case OP_Null:
+          genOpNull(cg, p, pOp);
+          break;
+        case OP_Once:
+          genOpOnce(cg, p, pOp, branchCheckerIndex);
+          break;
+        case OP_OpenRead:
+        case OP_OpenWrite:
+          genOpReadOpWrite(cg, p, pOp);
+          break;
+        case OP_Rewind:
+          genOpRewind(cg, p, pOp, branchCheckerIndex);
+          break;
+        case OP_Column:
+          genOpColumn(cg, p, pOp);
+          break;
+        case OP_Function:
+          genOpFunction(cg, p, pOp);
+          break;
+        case OP_Add:
+        case OP_Subtract:
+        case OP_Multiply:
+          genMathOps(cg, p, pOp);
+          break;
+        case OP_ResultRow:
+          genOpResultRow(cg, p, pOp);
+          genReturnAndStartAt(cg, p, SQLITE_ROW, i + 1);
+          break;
+        case OP_Copy:
+          genOpCopy(cg, p, pOp);
+          break;
+        case OP_DecrJumpZero:
+          genOpDecrJumpZero(cg, p, pOp, branchCheckerIndex);
+          break;
+        case OP_Next:
+          genOpNext(cg, p, pOp, branchCheckerIndex);
+          break;
+        case OP_String8:
+          pOp->p1 = 0x3fffffff & (int)strlen(pOp->p4.z);
+          pOp->opcode = OP_String;
+          genOpString(cg, p, pOp);
+          break;
+        case OP_String:
+          genOpString(cg, p, pOp);
+          break;
+        case OP_Eq:
+        case OP_Ne:
+        case OP_Lt:
+        case OP_Le:
+        case OP_Gt:
+        case OP_Ge:
+          genComparisons(cg, p, pOp, branchCheckerIndex);
+          break;
+        case OP_AggStep:
+          genAggrStepZero(cg, p, pOp);
+          break;
+        case OP_AggStep1:
+          genAggrStepOne(cg, p, pOp);
+          break;
+        case OP_AggFinal:
+          genOpAggFinal(cg, p, pOp);
+          break;
+        default:
+          // Return Opcode to notify to implement
+          genReturnAndStartAt(cg, p, 100000 + pOp->opcode, i);
+      }
+    };
     cg.end();
-  };
+  }
 }
 
 std::vector<uint8_t> genProgram(Vdbe *p) {

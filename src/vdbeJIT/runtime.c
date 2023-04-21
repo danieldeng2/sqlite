@@ -168,7 +168,7 @@ int execOpRewind(Vdbe *p, Op *pOp) {
   return res;
 }
 
-__attribute__((optnone)) int execOpColumn(Vdbe *p, Op *pOp) {
+int execOpColumn(Vdbe *p, Op *pOp) {
   u32 p2;            /* column number to retrieve */
   VdbeCursor *pC;    /* The VDBE cursor */
   BtCursor *pCrsr;   /* The B-Tree cursor corresponding to pC */
@@ -507,7 +507,7 @@ int execOpFunction(Vdbe *p, Op *pOp) {
   return rc;
 }
 
-void execComparison(Vdbe *p, Op *pOp) {
+Bool execComparison(Vdbe *p, Op *pOp) {
   int res, res2;    /* Result of the comparison of pIn1 against pIn3 */
   char affinity;    /* Affinity to use for comparison */
   u16 flags1;       /* Copy of initial value of pIn1->flags */
@@ -541,7 +541,7 @@ void execComparison(Vdbe *p, Op *pOp) {
       VVA_ONLY(iCompareIsInit = 1;)
     }
     p->pc++;
-    return;
+    return 0;
   }
   if ((flags1 | flags3) & MEM_Null) {
     /* One or both operands are NULL */
@@ -569,7 +569,7 @@ void execComparison(Vdbe *p, Op *pOp) {
       iCompare = 1; /* Operands are not equal */
       VVA_ONLY(iCompareIsInit = 1;)
       p->pc++;
-      return;
+      return 0;
     }
   } else {
     /* Neither operand is NULL and we couldn't do the special high-speed
@@ -645,10 +645,11 @@ void execComparison(Vdbe *p, Op *pOp) {
     goto jump_to_p2;
   }
   p->pc++;
-  return;
+  return 0;
 
 jump_to_p2:
   p->pc = pOp->p2;
+  return 1;
 }
 
 void execAggrStepOne(Vdbe *p, Op *pOp) {
