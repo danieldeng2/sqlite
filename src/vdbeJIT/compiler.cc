@@ -1,5 +1,5 @@
 #include "analysis.h"
-#include "operations.hh"
+#include "operations.h"
 #include "wasmblr.h"
 
 static inline uint32_t genRelocations(wasmblr::CodeGenerator &cg,
@@ -38,6 +38,7 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
                                    uint32_t stackAlloc) {
   std::vector<CodeBlock> codeBlocks = *getCodeBlocks(p);
   std::vector<uint32_t> branchTable = *getBranchTable(codeBlocks, p->nOp);
+  cg.local(cg.i32);
 
   cg.loop(cg.void_);
   for (int i = 0; i < codeBlocks.size(); i++) {
@@ -60,11 +61,19 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       cg.drop();
 
       switch (pOp->opcode) {
+        case OP_Noop:
+          break;
         case OP_Init:
           genOpInit(cg, p, pOp, branchTable, i);
           break;
+        case OP_Return:
+          genOpReturn(cg, p, pOp, branchTable, i);
+          break;
         case OP_Goto:
           genOpGoto(cg, p, pOp, branchTable, i);
+          break;
+        case OP_Gosub:
+          genOpGoSub(cg, p, pOp, branchTable, i);
           break;
         case OP_Halt:
           genReturnAndStartAt(cg, p, SQLITE_DONE, i);
@@ -90,6 +99,9 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_OpenRead:
         case OP_OpenWrite:
           genOpReadOpWrite(cg, p, pOp);
+          break;
+        case OP_SorterOpen:
+          genOpSorterOpen(cg, p, pOp);
           break;
         case OP_Rewind:
           genOpRewind(cg, p, pOp, branchTable, i);

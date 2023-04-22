@@ -54,8 +54,6 @@ void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
-
-__attribute__((optnone)) 
 void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
   if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {

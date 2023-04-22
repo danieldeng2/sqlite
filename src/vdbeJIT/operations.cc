@@ -1,4 +1,6 @@
-#include "operations.hh"
+#include "operations.h"
+
+#include <stddef.h>
 
 #include "runtime.h"
 
@@ -36,6 +38,62 @@ void genOpInit(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
 void genOpGoto(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                std::vector<uint32_t> &branchTable, int currPos) {
   genBranchTo(cg, p, branchTable, currPos, pOp->p2);
+}
+
+void genOpGoSub(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                std::vector<uint32_t> &branchTable, int currPos) {
+  Mem *pIn1 = &p->aMem[pOp->p1];
+  cg.i32.const_((intptr_t)&pIn1->flags);
+  cg.i32.const_(MEM_Int);
+  cg.i32.store16();
+  cg.i32.const_((intptr_t)&pIn1->u.i);
+  cg.i32.const_(currPos);
+  cg.i32.store();
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2);
+}
+
+void genOpReturn(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                 std::vector<uint32_t> &branchTable, int currPos) {
+  Mem *pIn1 = &p->aMem[pOp->p1];
+
+  // if( pIn1->flags & MEM_Int )
+  cg.i32.const_((int32_t)&pIn1->flags);
+  cg.i32.load16_u();
+  cg.i32.const_(MEM_Int);
+  cg.i32.and_();
+
+  cg.if_(cg.void_);
+  {
+    cg.i32.const_((int32_t)&p->pc);
+    // GOTO pIn1->u.i + 1
+    cg.i32.const_((int32_t)&pIn1->u.i);
+    cg.i32.load();
+    cg.i32.const_(1);
+    cg.i32.add();
+
+    cg.i32.store();
+    cg.br(branchTable[branchTable.size() - 1] - branchTable[currPos] + 1);
+  }
+  cg.end();
+}
+
+void genOpSorterOpen(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  int pCx_idx = 0;
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp->p1);
+  cg.i32.const_((intptr_t)pOp->p2);
+  cg.i32.const_((intptr_t)CURTYPE_SORTER);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&allocateCursor));
+  cg.call_indirect({cg.i32, cg.i32, cg.i32, cg.i32}, {cg.i32});
+  cg.local.tee(pCx_idx);
+  cg.i32.const_((intptr_t)pOp->p4.pKeyInfo);
+  cg.i32.store(1U, offsetof(VdbeCursor, pKeyInfo));
+  cg.i32.const_((intptr_t)p->db);
+  cg.i32.const_((intptr_t)pOp->p3);
+  cg.local.get(pCx_idx);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeSorterInit));
+  cg.call_indirect({cg.i32, cg.i32, cg.i32}, {cg.i32});
+  cg.drop();
 }
 
 // Begin a transaction on database P1
@@ -168,9 +226,8 @@ void genOpResultRow(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 // r[P2@P3+1]=r[P1@P3+1]
 void genOpCopy(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   // int i
-  int i_index = cg.locals().size();
+  int i_index = 0;
   int increment = 40;  // size of Mem
-  cg.local(cg.i32);
 
   // i = 0
   cg.i32.const_(0);

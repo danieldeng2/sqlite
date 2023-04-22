@@ -25,6 +25,8 @@ void genOpOnce(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
 
 void genOpReadOpWrite(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
+void genOpSorterOpen(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp);
+
 void genOpRewind(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
                  std::vector<uint32_t>& branchTable, int currPos);
 
@@ -54,3 +56,9 @@ void genAggrStepOne(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
 void genOpNext(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
                std::vector<uint32_t>& branchTable, int currPos);
+
+void genOpGoSub(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
+              std::vector<uint32_t>& branchTable, int currPos);
+
+void genOpReturn(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
+                 std::vector<uint32_t>& branchTable, int currPos);
