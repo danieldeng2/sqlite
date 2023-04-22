@@ -141,7 +141,8 @@ class F32 {
 class F64 {
  public:
   operator uint8_t();
-
+  void ne();
+  void const_(double f);
   void load(uint32_t alignment = 1, uint32_t offset = 0);
   void store(uint32_t alignment = 1, uint32_t offset = 0);
 
@@ -544,6 +545,16 @@ inline void F32::const_(float f) {
   cg.push(cg.f32);
 }
 
+inline void F64::const_(double f) {
+  cg.emit(0x44);
+  uint8_t r[8];
+  memcpy(&r, &f, sizeof(double));
+  for (auto i = 0; i < 8; ++i) {
+    cg.emit(r[i]);
+  }
+  cg.push(cg.f64);
+}
+
 inline V128::operator uint8_t() { return 0x7b; }
 
 #define UNARY_OP(classname, op, opcode, in_type, out_type) \
@@ -648,6 +659,7 @@ STORE_OP(F32, store, 0x38);
 
 LOAD_OP(F64, load, 0x2b, f64);
 STORE_OP(F64, store, 0x39);
+BINARY_OP(F64, ne, 0x62, f64, f64, i32);
 
 #undef UNARY_OP
 #undef BINARY_OP

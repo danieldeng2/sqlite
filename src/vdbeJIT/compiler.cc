@@ -56,9 +56,9 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       Op *pOp = &p->aOp[i];
 
       // for debugging
-      // cg.i32.const_(100000 + i);
-      // cg.drop();
-      
+      cg.i32.const_(100000 + i);
+      cg.drop();
+
       switch (pOp->opcode) {
         case OP_Init:
           genOpInit(cg, p, pOp, branchTable, i);
@@ -68,6 +68,9 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           break;
         case OP_Halt:
           genReturnAndStartAt(cg, p, SQLITE_DONE, i);
+          break;
+        case OP_If:
+          genOpIf(cg, p, pOp, branchTable, i);
           break;
         case OP_Transaction:
           genOpTransaction(cg, p, pOp, stackAlloc);

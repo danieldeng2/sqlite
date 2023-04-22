@@ -204,6 +204,39 @@ void genOpCopy(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.end();
 }
 
+void genOpIf(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+             std::vector<uint32_t> &branchTable, int currPos) {
+  Mem *pMem = &p->aMem[pOp->p1];
+  cg.i32.const_((intptr_t)&pMem->flags);
+  cg.i32.load16_u();
+  cg.i32.const_(MEM_Int | MEM_IntReal);
+  cg.i32.and_();
+  cg.if_(cg.i32);
+  {
+    cg.i32.const_((intptr_t)&pMem->u.i);
+    cg.i32.load();
+  }
+  cg.else_();
+  {
+    cg.i32.const_((intptr_t)&pMem->flags);
+    cg.i32.load16_u();
+    cg.i32.const_(MEM_Null);
+    cg.i32.and_();
+    cg.if_(cg.i32);
+    { cg.i32.const_(pOp->p3); }
+    cg.else_();
+    {
+      cg.i32.const_((intptr_t)&pMem->u.r);
+      cg.f64.load();
+      cg.f64.const_(0.0);
+      cg.f64.ne();
+    }
+    cg.end();
+  }
+  cg.end();
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
+}
+
 void genOpDecrJumpZero(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                        std::vector<uint32_t> &branchTable, int currPos) {
   cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);

@@ -710,7 +710,7 @@ static const char *vdbeMemTypeName(Mem *pMem){
 ** Execute as much of a VDBE program as we can.
 ** This is the core of sqlite3_step().  
 */
-// __attribute__((optnone)) 
+__attribute__((optnone)) 
 int sqlite3VdbeExec(
   Vdbe *p                    /* The VDBE */
 ){

@@ -6,37 +6,39 @@
 
 typedef int (*jitProgram)();
 
-int sqlite3VdbeExecJIT(Vdbe *p) {
-  int rc;
-
+__attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
   if (p->jitCode == NULL) {
-    clock_t begin = clock();
-    rc = sqlite3VdbeExec(p);
-    clock_t end = clock();
-    printf("Reference run took %f seconds\n",
-           (double)(end - begin) / CLOCKS_PER_SEC);
-    return rc;
+    return sqlite3VdbeExec(p);
   }
 
-  clock_t begin = clock();
-  rc = ((jitProgram)p->jitCode)();
-  clock_t end = clock();
-  printf("JIT run took %f seconds\n", (double)(end - begin) / CLOCKS_PER_SEC);
+  int rc = ((jitProgram)p->jitCode)();
 
+  if (rc > 100000) {
+    printf("TODO: Implement OP %d\n", rc - 100000);
+    rc = sqlite3VdbeExec(p);
+  }
   return rc;
 }
 
-// __attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
+
+// __attribute__((optnone)) 
+// int sqlite3VdbeExecJIT(Vdbe *p) {
 //   int rc;
 
 //   if (p->jitCode == NULL) {
-//     return sqlite3VdbeExec(p);
-//   }
-//   rc = ((jitProgram)p->jitCode)();
-
-//   if (rc > 100000) {
+//     clock_t begin = clock();
 //     rc = sqlite3VdbeExec(p);
+//     clock_t end = clock();
+//     printf("Reference run took %f seconds\n",
+//            (double)(end - begin) / CLOCKS_PER_SEC);
+//     return rc;
 //   }
+
+//   clock_t begin = clock();
+//   rc = ((jitProgram)p->jitCode)();
+//   clock_t end = clock();
+//   printf("JIT run took %f seconds\n", (double)(end - begin) / CLOCKS_PER_SEC);
+
 //   return rc;
 // }
 
@@ -52,10 +54,12 @@ void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
+
+__attribute__((optnone)) 
 void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
   if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
-    pOut->u.i = pIn1->u.i - pIn2->u.i;
+    pOut->u.i = pIn2->u.i - pIn1->u.i;
     flag = MEM_Int;
   } else {
     pOut->u.r = sqlite3VdbeRealValue(pIn2) - sqlite3VdbeRealValue(pIn1);
@@ -240,7 +244,7 @@ op_column_restart:
       } else {
         pDest = &aMem[pOp->p3];
         sqlite3VdbeMemSetNull(pDest);
-        goto op_column_out;
+        return rc;
       }
     } else {
       pCrsr = pC->uc.pCursor;
@@ -291,7 +295,7 @@ op_column_restart:
       ** extra bytes for the header length itself.  32768*3 + 3 = 98307.
       */
       if (aOffset[0] > 98307 || aOffset[0] > pC->payloadSize) {
-        goto op_column_corrupt;
+        return rc;
       }
     } else {
       /* This is an optimization.  By skipping over the first few tests
@@ -367,7 +371,7 @@ op_column_restart:
           zHdr = zEndHdr;
         } else {
           if (pC->aRow == 0) sqlite3VdbeMemRelease(&sMem);
-          goto op_column_corrupt;
+          return rc;
         }
       }
 
@@ -389,7 +393,7 @@ op_column_restart:
       } else {
         sqlite3VdbeMemSetNull(pDest);
       }
-      goto op_column_out;
+      return rc;
     }
   } else {
     t = pC->aType[p2];
@@ -458,11 +462,6 @@ op_column_restart:
       pDest->flags &= ~MEM_Ephem;
     }
   }
-
-op_column_out:
-  return rc;
-
-op_column_corrupt:
   return rc;
 }
 

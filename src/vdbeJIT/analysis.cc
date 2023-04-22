@@ -1,33 +1,25 @@
 #include "analysis.h"
 
 std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
+  // is it possible to jump to current location
   bool isJumpIn[p->nOp];
-  bool isJumpOut[p->nOp];
 
   for (int i = 0; i < p->nOp; i++) {
     isJumpIn[i] = false;
-    isJumpOut[i] = false;
   }
-  isJumpOut[p->nOp - 1] = true;
 
   for (int i = 0; i < p->nOp; i++) {
     Op pOp = p->aOp[i];
     switch (pOp.opcode) {
       case OP_Init:
         isJumpIn[i] = true;
-        isJumpOut[i] = true;
-        isJumpOut[pOp.p2 - 1] = true;
         isJumpIn[pOp.p2] = true;
       case OP_Goto:
-        isJumpOut[i] = true;
-        isJumpOut[pOp.p2 - 1] = true;
         isJumpIn[pOp.p2] = true;
-      case OP_Halt:
-        isJumpOut[i] = true;
       case OP_ResultRow:
-        isJumpOut[i] = true;
         isJumpIn[i + 1] = true;
         // conditional jumps
+      case OP_If:
       case OP_Eq:
       case OP_Ne:
       case OP_Lt:
@@ -38,9 +30,6 @@ std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
       case OP_Once:
       case OP_Rewind:
       case OP_DecrJumpZero:
-        isJumpOut[i] = true;
-        isJumpIn[i + 1] = true;
-        isJumpOut[pOp.p2 - 1] = true;
         isJumpIn[pOp.p2] = true;
     }
   }
@@ -51,7 +40,7 @@ std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
     if (isJumpIn[i]){
       curr.jumpIn = i;
     }
-    if (isJumpOut[i]){
+    if (i == p->nOp - 1 || isJumpIn[i + 1]){
       curr.jumpOut = i;
       result->emplace_back(curr);
     }
