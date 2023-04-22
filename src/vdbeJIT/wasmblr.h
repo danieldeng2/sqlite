@@ -327,7 +327,7 @@ struct CodeGenerator {
   void return_();
   void drop();
   void br(uint32_t labelidx);
-  void br_table(std::vector<uint32_t> labelidxs, uint32_t defaultidx);
+  void br_table(std::vector<uint32_t> &labelidxs, uint32_t defaultidx);
   void br_if(uint32_t labelidx);
   void end();
   void call(uint32_t funcidx);
@@ -916,7 +916,7 @@ inline void CodeGenerator::br_if(uint32_t labelidx) {
   emit(0x0d);
   emit(encode_unsigned(labelidx));
 }
-inline void CodeGenerator::br_table(std::vector<uint32_t> labelidxs,
+inline void CodeGenerator::br_table(std::vector<uint32_t> &labelidxs,
                                     uint32_t defaultidx) {
   auto t = pop();
   assert(t == i32);

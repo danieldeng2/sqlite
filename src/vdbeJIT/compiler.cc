@@ -37,6 +37,7 @@ static inline void genReturnAndStartAt(wasmblr::CodeGenerator &cg, Vdbe *p,
 static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
                                    uint32_t stackAlloc) {
   std::vector<CodeBlock> codeBlocks = *getCodeBlocks(p);
+  std::vector<uint32_t> branchTable = *getBranchTable(codeBlocks, p->nOp);
 
   cg.loop(cg.void_);
   for (int i = 0; i < codeBlocks.size(); i++) {
@@ -46,19 +47,11 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
   cg.i32.const_((int32_t)&p->pc);
   cg.i32.load(2U, 0U);
 
-  std::vector<uint32_t> labelidxs;
-  int blockIndex = 0;
-  for (int i = 0; i < p->nOp; i++) {
-    if (i > codeBlocks[blockIndex].jumpOut) blockIndex++;
-    labelidxs.emplace_back(blockIndex);
-  }
-  cg.br_table(labelidxs, codeBlocks.size());
+  cg.br_table(branchTable, codeBlocks.size());
   cg.end();
 
   for (int blockIndex = 0; blockIndex < codeBlocks.size(); blockIndex++) {
     CodeBlock codeBlock = codeBlocks[blockIndex];
-    int branchCheckerIndex = codeBlocks.size() - blockIndex - 1;
-
     for (int i = codeBlock.jumpIn; i <= codeBlock.jumpOut; i++) {
       Op *pOp = &p->aOp[i];
 
@@ -68,10 +61,10 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       
       switch (pOp->opcode) {
         case OP_Init:
-          genOpInit(cg, p, pOp, branchCheckerIndex);
+          genOpInit(cg, p, pOp, branchTable, i);
           break;
         case OP_Goto:
-          genOpGoto(cg, p, pOp, branchCheckerIndex);
+          genOpGoto(cg, p, pOp, branchTable, i);
           break;
         case OP_Halt:
           genReturnAndStartAt(cg, p, SQLITE_DONE, i);
@@ -89,14 +82,14 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           genOpNull(cg, p, pOp);
           break;
         case OP_Once:
-          genOpOnce(cg, p, pOp, branchCheckerIndex);
+          genOpOnce(cg, p, pOp, branchTable, i);
           break;
         case OP_OpenRead:
         case OP_OpenWrite:
           genOpReadOpWrite(cg, p, pOp);
           break;
         case OP_Rewind:
-          genOpRewind(cg, p, pOp, branchCheckerIndex);
+          genOpRewind(cg, p, pOp, branchTable, i);
           break;
         case OP_Column:
           genOpColumn(cg, p, pOp);
@@ -117,10 +110,10 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           genOpCopy(cg, p, pOp);
           break;
         case OP_DecrJumpZero:
-          genOpDecrJumpZero(cg, p, pOp, branchCheckerIndex);
+          genOpDecrJumpZero(cg, p, pOp, branchTable, i);
           break;
         case OP_Next:
-          genOpNext(cg, p, pOp, branchCheckerIndex);
+          genOpNext(cg, p, pOp, branchTable, i);
           break;
         case OP_String8:
           pOp->p1 = 0x3fffffff & (int)strlen(pOp->p4.z);
@@ -136,7 +129,7 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_Le:
         case OP_Gt:
         case OP_Ge:
-          genComparisons(cg, p, pOp, branchCheckerIndex);
+          genComparisons(cg, p, pOp, branchTable, i);
           break;
         case OP_AggStep:
           genAggrStepZero(cg, p, pOp);

@@ -2,22 +2,40 @@
 
 #include "runtime.h"
 
+static void genBranchTo(wasmblr::CodeGenerator &cg, Vdbe *p,
+                        std::vector<uint32_t> &branchTable, int from, int to,
+                        int offset = 0, bool brif = false) {
+  int fromBlock = branchTable[from];
+  int toBlock = branchTable[to];
+
+  int br_destination;
+  if (toBlock > fromBlock) {
+    br_destination = toBlock - fromBlock - 1;
+  } else {
+    cg.i32.const_((int32_t)&p->pc);
+    cg.i32.const_(to);
+    cg.i32.store();
+    br_destination = branchTable[branchTable.size() - 1] - fromBlock;
+  }
+  br_destination += offset;
+  if (brif)
+    cg.br_if(br_destination);
+  else
+    cg.br(br_destination);
+}
+
 void genOpInit(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
-               int branchChecker) {
+               std::vector<uint32_t> &branchTable, int currPos) {
   // For self altering instructions, treat the address as parameter
   cg.i32.const_((int)&pOp->p1);
   cg.i32.const_(1);
   cg.i32.store();
-
-  genOpGoto(cg, p, pOp, branchChecker);
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2);
 }
 
 void genOpGoto(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
-               int branchChecker) {
-  cg.i32.const_((int32_t)&p->pc);
-  cg.i32.const_(pOp->p2);
-  cg.i32.store(2U, 0U);
-  cg.br(branchChecker);
+               std::vector<uint32_t> &branchTable, int currPos) {
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2);
 }
 
 // Begin a transaction on database P1
@@ -78,7 +96,7 @@ void genOpNull(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 }
 
 void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
-               int branchChecker) {
+               std::vector<uint32_t> &branchTable, int currPos) {
   // assuming no pFrame
 
   // dynamic parameters
@@ -97,12 +115,7 @@ void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
     cg.i32.store();
   }
   cg.else_();
-  {
-    cg.i32.const_((int32_t)&p->pc);
-    cg.i32.const_(pOp->p2);
-    cg.i32.store();
-    cg.br(branchChecker + 1);
-  }
+  { genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1); }
   cg.end();
 }
 
@@ -115,7 +128,7 @@ void genOpReadOpWrite(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 }
 
 void genOpRewind(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
-                 int branchCheckerIndex) {
+                 std::vector<uint32_t> &branchTable, int currPos) {
   // Goto beginning of table
 
   // For now, call helper function to achieve goal
@@ -129,7 +142,7 @@ void genOpRewind(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
     cg.i32.const_((int32_t)&p->pc);
     cg.i32.const_(pOp->p2);
     cg.i32.store(2U, 0U);
-    cg.br(branchCheckerIndex + 1);
+    genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1);
   }
   cg.end();
 }
@@ -192,7 +205,7 @@ void genOpCopy(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 }
 
 void genOpDecrJumpZero(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
-                       int branchChecker) {
+                       std::vector<uint32_t> &branchTable, int currPos) {
   cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
   cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
   cg.i32.load(2U, 0U);
@@ -202,17 +215,10 @@ void genOpDecrJumpZero(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
 
   cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
   cg.i32.load(2U, 0U);
-
-  cg.if_(cg.void_);
-  {}
-  cg.else_();
-  {
-    cg.i32.const_((int32_t)&p->pc);
-    cg.i32.const_(pOp->p2);
-    cg.i32.store(2U, 0U);
-    cg.br(branchChecker + 1);
-  }
-  cg.end();
+  
+  // jump equals zero
+  cg.i32.eqz();
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true); 
 }
 
 // assume not blob
@@ -241,12 +247,12 @@ void genOpString(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 }
 
 void genComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
-                    int branchChecker) {
+                    std::vector<uint32_t> &branchTable, int currPos) {
   cg.i32.const_((int)p);
   cg.i32.const_((int)pOp);
   cg.i32.const_(reinterpret_cast<intptr_t>(&execComparison));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
-  cg.br_if(branchChecker);
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
 }
 
 void genOpAggFinal(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
@@ -352,11 +358,10 @@ void genAggrStepOne(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 }
 
 void genOpNext(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
-               int branchChecker) {
+               std::vector<uint32_t> &branchTable, int currPos) {
   cg.i32.const_((int)p);
   cg.i32.const_((int)pOp);
   cg.i32.const_(reinterpret_cast<intptr_t>(&execOpNext));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
-  cg.drop();
-  cg.br(branchChecker);
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
 }

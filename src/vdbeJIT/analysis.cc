@@ -60,3 +60,13 @@ std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
   
   return result;
 }
+
+std::vector<uint32_t> *getBranchTable(std::vector<CodeBlock> codeBlocks, int nOp){
+  std::vector<uint32_t> *result = new std::vector<uint32_t>;
+  int blockIndex = 0;
+  for (int i = 0; i < nOp; i++) {
+    if (i > codeBlocks[blockIndex].jumpOut) blockIndex++;
+    result->emplace_back(blockIndex);
+  }
+  return result;
+}

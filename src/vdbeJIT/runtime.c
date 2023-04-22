@@ -451,13 +451,11 @@ int execOpNext(Vdbe *p, Op pOp) {
   if (rc == SQLITE_OK) {
     pC->nullRow = 0;
     p->aCounter[pOp.p5]++;
-    p->pc = pOp.p2;
-    return rc;
+    return 1;
   }
   rc = SQLITE_OK;
   pC->nullRow = 1;
-  p->pc++;
-  return rc;
+  return 0;
 }
 
 int execOpFunction(Vdbe *p, Op *pOp) {
@@ -540,7 +538,6 @@ Bool execComparison(Vdbe *p, Op *pOp) {
       iCompare = 0;
       VVA_ONLY(iCompareIsInit = 1;)
     }
-    p->pc++;
     return 0;
   }
   if ((flags1 | flags3) & MEM_Null) {
@@ -568,7 +565,6 @@ Bool execComparison(Vdbe *p, Op *pOp) {
       }
       iCompare = 1; /* Operands are not equal */
       VVA_ONLY(iCompareIsInit = 1;)
-      p->pc++;
       return 0;
     }
   } else {
@@ -644,11 +640,9 @@ Bool execComparison(Vdbe *p, Op *pOp) {
   if (res2) {
     goto jump_to_p2;
   }
-  p->pc++;
   return 0;
 
 jump_to_p2:
-  p->pc = pOp->p2;
   return 1;
 }
 
