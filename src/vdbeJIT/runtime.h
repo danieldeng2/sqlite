@@ -15,7 +15,6 @@ int execOpRewind(Vdbe *p, Op *pOp);
 int execOpColumn(Vdbe *p, Op *pOp);
 int execOpNext(Vdbe* p, Op pOp);
 int execOpFunction(Vdbe *p, Op *pOp);
-Bool execComparison(Vdbe *p, Op *pOp);
 void execAggrStepZero(Vdbe *p, Op *pOp);
 void execAggrStepOne(Vdbe *p, Op *pOp);
 

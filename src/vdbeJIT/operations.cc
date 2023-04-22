@@ -215,10 +215,10 @@ void genOpDecrJumpZero(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
 
   cg.i32.const_((int32_t)&p->aMem[pOp->p1].u.i);
   cg.i32.load(2U, 0U);
-  
+
   // jump equals zero
   cg.i32.eqz();
-  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true); 
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
 }
 
 // assume not blob
@@ -246,12 +246,63 @@ void genOpString(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.store();
 }
 
+static void genComparisonOpCode(wasmblr::CodeGenerator &cg, int opcode) {
+  switch (opcode) {
+    case OP_Eq:
+      cg.i32.eq();
+      break;
+    case OP_Ne:
+      cg.i32.ne();
+      break;
+    case OP_Lt:
+      cg.i32.lt_s();
+      break;
+    case OP_Le:
+      cg.i32.le_s();
+      break;
+    case OP_Gt:
+      cg.i32.gt_s();
+      break;
+    case OP_Ge:
+      cg.i32.ge_s();
+      break;
+  }
+}
+
 void genComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                     std::vector<uint32_t> &branchTable, int currPos) {
-  cg.i32.const_((int)p);
-  cg.i32.const_((int)pOp);
-  cg.i32.const_(reinterpret_cast<intptr_t>(&execComparison));
-  cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
+  Mem *pIn1 = &p->aMem[pOp->p1];
+  Mem *pIn3 = &p->aMem[pOp->p3];
+
+  // pIn1->flags & pIn3->flags & MEM_Int
+  cg.i32.const_((intptr_t)&pIn1->flags);
+  cg.i32.load16_u();
+  cg.i32.const_((intptr_t)&pIn3->flags);
+  cg.i32.load16_u();
+  cg.i32.and_();
+  cg.i32.const_(MEM_Int);
+  cg.i32.and_();
+
+  cg.if_(cg.i32);
+  {
+    cg.i32.const_((intptr_t)&pIn3->u.i);
+    cg.i32.load();
+    cg.i32.const_((intptr_t)&pIn1->u.i);
+    cg.i32.load();
+    genComparisonOpCode(cg, pOp->opcode);
+  }
+  cg.else_();
+  {
+    cg.i32.const_((intptr_t)pIn3);
+    cg.i32.const_((intptr_t)pIn1);
+    cg.i32.const_((intptr_t)pOp->p4.pColl);
+    cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3MemCompare));
+    cg.call_indirect({cg.i32, cg.i32, cg.i32}, {cg.i32});
+    cg.i32.const_(0);
+    genComparisonOpCode(cg, pOp->opcode);
+  }
+  cg.end();
+
   genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
 }
 

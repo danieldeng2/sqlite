@@ -529,35 +529,6 @@ int execOpFunction(Vdbe *p, Op *pOp) {
   return rc;
 }
 
-Bool execComparison(Vdbe *p, Op *pOp) {
-  char affinity; /* Affinity to use for comparison */
-  u16 flags1;    /* Copy of initial value of pIn1->flags */
-  u16 flags3;    /* Copy of initial value of pIn3->flags */
-
-  Mem *pIn1 = &p->aMem[pOp->p1];
-  Mem *pIn3 = &p->aMem[pOp->p3];
-
-  if ((pIn1->flags & pIn3->flags & MEM_Int) != 0) {
-    /* Common case of comparison of two integers */
-    if (pIn3->u.i > pIn1->u.i) {
-      return sqlite3aGTb[pOp->opcode];
-    } else if (pIn3->u.i < pIn1->u.i) {
-      return sqlite3aLTb[pOp->opcode];
-    }
-    return sqlite3aEQb[pOp->opcode];
-  }
-
-  int res = sqlite3MemCompare(pIn3, pIn1, pOp->p4.pColl);
-
-  if (res < 0) {
-    return sqlite3aLTb[pOp->opcode];
-  }
-  if (res == 0) {
-    return sqlite3aEQb[pOp->opcode];
-  }
-  return sqlite3aGTb[pOp->opcode];
-}
-
 void execAggrStepOne(Vdbe *p, Op *pOp) {
   int i;
   sqlite3_context *pCtx;
