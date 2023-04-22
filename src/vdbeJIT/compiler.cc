@@ -56,8 +56,8 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       Op *pOp = &p->aOp[i];
 
       // for debugging
-      cg.i32.const_(100000 + i);
-      cg.drop();
+      // cg.i32.const_(100000 + i);
+      // cg.drop();
       
       switch (pOp->opcode) {
         case OP_Init:

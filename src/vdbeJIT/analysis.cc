@@ -1,6 +1,5 @@
 #include "analysis.h"
 
-__attribute__((optnone)) 
 std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
   bool isJumpIn[p->nOp];
   bool isJumpOut[p->nOp];
