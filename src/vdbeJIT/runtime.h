@@ -13,10 +13,12 @@ void execOpMultiply(Mem *pIn1, Mem *pIn2, Mem *pOut);
 int execOpenReadWrite(Vdbe *p, Op *pOp);
 int execOpRewind(Vdbe *p, Op *pOp);
 int execOpColumn(Vdbe *p, Op *pOp);
-int execOpNext(Vdbe* p, Op pOp);
+int execOpNext(Vdbe* p, Op *pOp);
 int execOpFunction(Vdbe *p, Op *pOp);
 void execAggrStepZero(Vdbe *p, Op *pOp);
 void execAggrStepOne(Vdbe *p, Op *pOp);
+void execOpMakeRecord(Vdbe *p, Op *pOp);
+int execOpCompare(Vdbe *p, Op *pOp, u32 *aPermute);
 
 #ifdef __cplusplus
 }

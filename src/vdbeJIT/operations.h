@@ -25,7 +25,7 @@ void genOpOnce(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
 
 void genOpReadOpWrite(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
-void genOpSorterOpen(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp);
+void genOpSorterOpen(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
 void genOpRewind(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
                  std::vector<uint32_t>& branchTable, int currPos);
@@ -50,6 +50,24 @@ void genOpFunction(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
 void genMathOps(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
+void genMakeRecord(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
+void genOpSorterInsert(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
+void genOpenPseudo(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
+void genSorterData(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
+void genOpCompare(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp, u32* aPermute);
+
+void genOpJump(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
+               std::vector<uint32_t>& branchTable, int currPos);
+
+void genOpMove(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
+void genOpIfPos(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
+                std::vector<uint32_t>& branchTable, int currPos);
+
 void genAggrStepZero(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
 void genAggrStepOne(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
@@ -57,8 +75,11 @@ void genAggrStepOne(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 void genOpNext(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
                std::vector<uint32_t>& branchTable, int currPos);
 
+void genOpSorterNext(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
+                     std::vector<uint32_t>& branchTable, int currPos);
+
 void genOpGoSub(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-              std::vector<uint32_t>& branchTable, int currPos);
+                std::vector<uint32_t>& branchTable, int currPos);
 
 void genOpReturn(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
                  std::vector<uint32_t>& branchTable, int currPos);

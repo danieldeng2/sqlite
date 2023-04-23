@@ -57,9 +57,8 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       Op *pOp = &p->aOp[i];
 
       // for debugging
-      cg.i32.const_(100000 + i);
-      cg.drop();
-
+      // cg.i32.const_(100000 + i);
+      // cg.drop();
       switch (pOp->opcode) {
         case OP_Noop:
           break;
@@ -103,6 +102,8 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_SorterOpen:
           genOpSorterOpen(cg, p, pOp);
           break;
+        case OP_SorterSort:
+        case OP_Sort:
         case OP_Rewind:
           genOpRewind(cg, p, pOp, branchTable, i);
           break;
@@ -121,6 +122,9 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           genOpResultRow(cg, p, pOp);
           genReturnAndStartAt(cg, p, SQLITE_ROW, i + 1);
           break;
+        case OP_Move:
+          genOpMove(cg, p, pOp);
+          break;
         case OP_Copy:
           genOpCopy(cg, p, pOp);
           break;
@@ -129,6 +133,9 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           break;
         case OP_Next:
           genOpNext(cg, p, pOp, branchTable, i);
+          break;
+        case OP_SorterNext:
+          genOpSorterNext(cg, p, pOp, branchTable, i);
           break;
         case OP_String8:
           pOp->p1 = 0x3fffffff & (int)strlen(pOp->p4.z);
@@ -154,6 +161,27 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           break;
         case OP_AggFinal:
           genOpAggFinal(cg, p, pOp);
+          break;
+        case OP_MakeRecord:
+          genMakeRecord(cg, p, pOp);
+          break;
+        case OP_SorterInsert:
+          genOpSorterInsert(cg, p, pOp);
+          break;
+        case OP_OpenPseudo:
+          genOpenPseudo(cg, p, pOp);
+          break;
+        case OP_SorterData:
+          genSorterData(cg, p, pOp);
+          break;
+        case OP_Compare:
+          genOpCompare(cg, p, pOp, pOp[-1].p4.ai + 1);
+          break;
+        case OP_Jump:
+          genOpJump(cg, p, pOp, branchTable, i);
+          break;
+        case OP_IfPos:
+          genOpIfPos(cg, p, pOp, branchTable, i);
           break;
         default:
           // Return Opcode to notify to implement

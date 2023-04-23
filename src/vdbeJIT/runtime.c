@@ -20,8 +20,7 @@ __attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
   return rc;
 }
 
-
-// __attribute__((optnone)) 
+// __attribute__((optnone))
 // int sqlite3VdbeExecJIT(Vdbe *p) {
 //   int rc;
 
@@ -37,12 +36,13 @@ __attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
 //   clock_t begin = clock();
 //   rc = ((jitProgram)p->jitCode)();
 //   clock_t end = clock();
-//   printf("JIT run took %f seconds\n", (double)(end - begin) / CLOCKS_PER_SEC);
+//   printf("JIT run took %f seconds\n", (double)(end - begin) /
+//   CLOCKS_PER_SEC);
 
 //   return rc;
 // }
 
-// TODO: replace with assembly
+__attribute__((optnone)) 
 void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
   if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
@@ -54,6 +54,7 @@ void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
+__attribute__((optnone)) 
 void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
   if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
@@ -65,6 +66,7 @@ void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
+__attribute__((optnone)) 
 void execOpMultiply(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
   if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
@@ -77,6 +79,7 @@ void execOpMultiply(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
 
+__attribute__((optnone)) 
 int execOpenReadWrite(Vdbe *p, Op *pOp) {
   int nField;
   KeyInfo *pKeyInfo;
@@ -166,6 +169,7 @@ open_cursor_set_hints:
   return rc;
 }
 
+__attribute__((optnone)) 
 int execOpRewind(Vdbe *p, Op *pOp) {
   VdbeCursor *pC;
   BtCursor *pCrsr;
@@ -194,6 +198,7 @@ int execOpRewind(Vdbe *p, Op *pOp) {
   return res;
 }
 
+__attribute__((optnone)) 
 int execOpColumn(Vdbe *p, Op *pOp) {
   u32 p2;            /* column number to retrieve */
   VdbeCursor *pC;    /* The VDBE cursor */
@@ -463,22 +468,23 @@ op_column_restart:
   return rc;
 }
 
-int execOpNext(Vdbe *p, Op pOp) {
-  VdbeCursor *pC = p->apCsr[pOp.p1];
+__attribute__((optnone)) 
+int execOpNext(Vdbe *p, Op *pOp) {
+  VdbeCursor *pC = p->apCsr[pOp->p1];
 
-  int rc = sqlite3BtreeNext(pC->uc.pCursor, pOp.p3);
+  int rc = sqlite3VdbeSorterNext(p->db, pC);
 
   pC->cacheStatus = CACHE_STALE;
   if (rc == SQLITE_OK) {
     pC->nullRow = 0;
-    p->aCounter[pOp.p5]++;
+    p->aCounter[pOp->p5]++;
     return 1;
   }
   rc = SQLITE_OK;
   pC->nullRow = 1;
   return 0;
 }
-
+__attribute__((optnone)) 
 int execOpFunction(Vdbe *p, Op *pOp) {
   int i;
   sqlite3_context *pCtx;
@@ -526,6 +532,7 @@ int execOpFunction(Vdbe *p, Op *pOp) {
   return rc;
 }
 
+__attribute__((optnone)) 
 void execAggrStepOne(Vdbe *p, Op *pOp) {
   int i;
   sqlite3_context *pCtx;
@@ -591,4 +598,292 @@ void execAggrStepOne(Vdbe *p, Op *pOp) {
   }
   assert(pCtx->pOut->flags == MEM_Null);
   assert(pCtx->skipFlag == 0);
+}
+
+__attribute__((optnone)) 
+void execOpMakeRecord(Vdbe *p, Op *pOp) {
+  Mem *pRec;       /* The new record */
+  u64 nData;       /* Number of bytes of data space */
+  int nHdr;        /* Number of bytes of header space */
+  i64 nByte;       /* Data space required for this record */
+  i64 nZero;       /* Number of zero bytes at the end of the record */
+  int nVarint;     /* Number of bytes in a varint */
+  u32 serial_type; /* Type field */
+  Mem *pData0;     /* First field to be combined into the record */
+  Mem *pLast;      /* Last field of the record */
+  int nField;      /* Number of fields in the record */
+  char *zAffinity; /* The affinity string for the record */
+  u32 len;         /* Length of a field */
+  u8 *zHdr;        /* Where to write next byte of the header */
+  u8 *zPayload;    /* Where to write next byte of the payload */
+
+  /* Assuming the record contains N fields, the record format looks
+  ** like this:
+  **
+  ** ------------------------------------------------------------------------
+  ** | hdr-size | type 0 | type 1 | ... | type N-1 | data0 | ... | data N-1 |
+  ** ------------------------------------------------------------------------
+  **
+  ** Data(0) is taken from register P1.  Data(1) comes from register P1+1
+  ** and so forth.
+  **
+  ** Each type field is a varint representing the serial type of the
+  ** corresponding data element (see sqlite3VdbeSerialType()). The
+  ** hdr-size field is also a varint which is the offset from the beginning
+  ** of the record to data0.
+  */
+  nData = 0; /* Number of bytes of data space */
+  nHdr = 0;  /* Number of bytes of header space */
+  nZero = 0; /* Number of zero bytes at the end of the record */
+  nField = pOp->p1;
+  zAffinity = pOp->p4.z;
+  assert(nField > 0 && pOp->p2 > 0 &&
+         pOp->p2 + nField <= (p->nMem + 1 - p->nCursor) + 1);
+  pData0 = &p->aMem[nField];
+  nField = pOp->p2;
+  pLast = &pData0[nField - 1];
+
+  /* Identify the output register */
+  assert(pOp->p3 < pOp->p1 || pOp->p3 >= pOp->p1 + pOp->p2);
+  Mem *pOut = &p->aMem[pOp->p3];
+
+  /* Loop through the elements that will make up the record to figure
+  ** out how much space is required for the new record.  After this loop,
+  ** the Mem.uTemp field of each term should hold the serial-type that will
+  ** be used for that term in the generated record:
+  **
+  **   Mem.uTemp value    type
+  **   ---------------    ---------------
+  **      0               NULL
+  **      1               1-byte signed integer
+  **      2               2-byte signed integer
+  **      3               3-byte signed integer
+  **      4               4-byte signed integer
+  **      5               6-byte signed integer
+  **      6               8-byte signed integer
+  **      7               IEEE float
+  **      8               Integer constant 0
+  **      9               Integer constant 1
+  **     10,11            reserved for expansion
+  **    N>=12 and even    BLOB
+  **    N>=13 and odd     text
+  **
+  ** The following additional values are computed:
+  **     nHdr        Number of bytes needed for the record header
+  **     nData       Number of bytes of data space needed for the record
+  **     nZero       Zero bytes at the end of the record
+  */
+  pRec = pLast;
+  do {
+    assert(memIsValid(pRec));
+    if (pRec->flags & MEM_Null) {
+      if (pRec->flags & MEM_Zero) {
+        /* Values with MEM_Null and MEM_Zero are created by xColumn virtual
+        ** table methods that never invoke sqlite3_result_xxxxx() while
+        ** computing an unchanging column value in an UPDATE statement.
+        ** Give such values a special internal-use-only serial-type of 10
+        ** so that they can be passed through to xUpdate and have
+        ** a true sqlite3_value_nochange(). */
+#ifndef SQLITE_ENABLE_NULL_TRIM
+        assert(pOp->p5 == OPFLAG_NOCHNG_MAGIC || CORRUPT_DB);
+#endif
+        pRec->uTemp = 10;
+      } else {
+        pRec->uTemp = 0;
+      }
+      nHdr++;
+    } else if (pRec->flags & (MEM_Int | MEM_IntReal)) {
+      /* Figure out whether to use 1, 2, 4, 6 or 8 bytes. */
+      i64 i = pRec->u.i;
+      u64 uu;
+      testcase(pRec->flags & MEM_Int);
+      testcase(pRec->flags & MEM_IntReal);
+      if (i < 0) {
+        uu = ~i;
+      } else {
+        uu = i;
+      }
+      nHdr++;
+      testcase(uu == 127);
+      testcase(uu == 128);
+      testcase(uu == 32767);
+      testcase(uu == 32768);
+      testcase(uu == 8388607);
+      testcase(uu == 8388608);
+      testcase(uu == 2147483647);
+      testcase(uu == 2147483648LL);
+      testcase(uu == 140737488355327LL);
+      testcase(uu == 140737488355328LL);
+      if (uu <= 127) {
+        if ((i & 1) == i && p->minWriteFileFormat >= 4) {
+          pRec->uTemp = 8 + (u32)uu;
+        } else {
+          nData++;
+          pRec->uTemp = 1;
+        }
+      } else if (uu <= 32767) {
+        nData += 2;
+        pRec->uTemp = 2;
+      } else if (uu <= 8388607) {
+        nData += 3;
+        pRec->uTemp = 3;
+      } else if (uu <= 2147483647) {
+        nData += 4;
+        pRec->uTemp = 4;
+      } else if (uu <= 140737488355327LL) {
+        nData += 6;
+        pRec->uTemp = 5;
+      } else {
+        nData += 8;
+        if (pRec->flags & MEM_IntReal) {
+          /* If the value is IntReal and is going to take up 8 bytes to store
+          ** as an integer, then we might as well make it an 8-byte floating
+          ** point value */
+          pRec->u.r = (double)pRec->u.i;
+          pRec->flags &= ~MEM_IntReal;
+          pRec->flags |= MEM_Real;
+          pRec->uTemp = 7;
+        } else {
+          pRec->uTemp = 6;
+        }
+      }
+    } else if (pRec->flags & MEM_Real) {
+      nHdr++;
+      nData += 8;
+      pRec->uTemp = 7;
+    } else {
+      assert(db->mallocFailed || pRec->flags & (MEM_Str | MEM_Blob));
+      assert(pRec->n >= 0);
+      len = (u32)pRec->n;
+      serial_type = (len * 2) + 12 + ((pRec->flags & MEM_Str) != 0);
+      if (pRec->flags & MEM_Zero) {
+        serial_type += pRec->u.nZero * 2;
+        if (nData) {
+          len += pRec->u.nZero;
+        } else {
+          nZero += pRec->u.nZero;
+        }
+      }
+      nData += len;
+      nHdr += sqlite3VarintLen(serial_type);
+      pRec->uTemp = serial_type;
+    }
+    if (pRec == pData0) break;
+    pRec--;
+  } while (1);
+
+  /* EVIDENCE-OF: R-22564-11647 The header begins with a single varint
+  ** which determines the total number of bytes in the header. The varint
+  ** value is the size of the header in bytes including the size varint
+  ** itself. */
+  testcase(nHdr == 126);
+  testcase(nHdr == 127);
+  if (nHdr <= 126) {
+    /* The common case */
+    nHdr += 1;
+  } else {
+    /* Rare case of a really large header */
+    nVarint = sqlite3VarintLen(nHdr);
+    nHdr += nVarint;
+    if (nVarint < sqlite3VarintLen(nHdr)) nHdr++;
+  }
+  nByte = nHdr + nData;
+
+  /* Make sure the output register has a buffer large enough to store
+  ** the new record. The output register (pOp->p3) is not allowed to
+  ** be one of the input registers (because the following call to
+  ** sqlite3VdbeMemClearAndResize() could clobber the value before it is used).
+  */
+  if (nByte + nZero <= pOut->szMalloc) {
+    pOut->z = pOut->zMalloc;
+  }
+  pOut->n = (int)nByte;
+  pOut->flags = MEM_Blob;
+  if (nZero) {
+    pOut->u.nZero = nZero;
+    pOut->flags |= MEM_Zero;
+  }
+  zHdr = (u8 *)pOut->z;
+  zPayload = zHdr + nHdr;
+
+  /* Write the record */
+  if (nHdr < 0x80) {
+    *(zHdr++) = nHdr;
+  } else {
+    zHdr += sqlite3PutVarint(zHdr, nHdr);
+  }
+  assert(pData0 <= pLast);
+  pRec = pData0;
+  while (1 /*exit-by-break*/) {
+    serial_type = pRec->uTemp;
+    /* EVIDENCE-OF: R-06529-47362 Following the size varint are one or more
+    ** additional varints, one per column.
+    ** EVIDENCE-OF: R-64536-51728 The values for each column in the record
+    ** immediately follow the header. */
+    if (serial_type <= 7) {
+      *(zHdr++) = serial_type;
+      if (serial_type == 0) {
+        /* NULL value.  No change in zPayload */
+      } else {
+        u64 v;
+        u32 i;
+        if (serial_type == 7) {
+          assert(sizeof(v) == sizeof(pRec->u.r));
+          memcpy(&v, &pRec->u.r, sizeof(v));
+          swapMixedEndianFloat(v);
+        } else {
+          v = pRec->u.i;
+        }
+        len = i = sqlite3SmallTypeSizes[serial_type];
+        assert(i > 0);
+        while (1 /*exit-by-break*/) {
+          zPayload[--i] = (u8)(v & 0xFF);
+          if (i == 0) break;
+          v >>= 8;
+        }
+        zPayload += len;
+      }
+    } else if (serial_type < 0x80) {
+      *(zHdr++) = serial_type;
+      if (serial_type >= 14 && pRec->n > 0) {
+        assert(pRec->z != 0);
+        memcpy(zPayload, pRec->z, pRec->n);
+        zPayload += pRec->n;
+      }
+    } else {
+      zHdr += sqlite3PutVarint(zHdr, serial_type);
+      if (pRec->n) {
+        assert(pRec->z != 0);
+        memcpy(zPayload, pRec->z, pRec->n);
+        zPayload += pRec->n;
+      }
+    }
+    if (pRec == pLast) break;
+    pRec++;
+  }
+}
+
+__attribute__((optnone)) 
+int execOpCompare(Vdbe *p, Op *pOp, u32 *aPermute) {
+  const KeyInfo *pKeyInfo = pOp->p4.pKeyInfo;
+  int p1 = pOp->p1;
+  int p2 = pOp->p2;
+  int iCompare = 0;
+
+  for (int i = 0; i < pOp->p3; i++) {
+    int idx = aPermute ? aPermute[i] : (u32)i;
+    CollSeq *pColl = pKeyInfo->aColl[i];
+    int bRev = (pKeyInfo->aSortFlags[i] & KEYINFO_ORDER_DESC);
+    iCompare = sqlite3MemCompare(&p->aMem[p1 + idx], &p->aMem[p2 + idx], pColl);
+    if (iCompare) {
+      if ((pKeyInfo->aSortFlags[i] & KEYINFO_ORDER_BIGNULL) &&
+          ((p->aMem[p1 + idx].flags & MEM_Null) ||
+           (p->aMem[p2 + idx].flags & MEM_Null))) {
+        iCompare = -iCompare;
+      }
+      if (bRev) iCompare = -iCompare;
+      break;
+    }
+  }
+  return iCompare;
 }
