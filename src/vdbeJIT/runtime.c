@@ -6,7 +6,8 @@
 
 typedef int (*jitProgram)();
 
-__attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
+// __attribute__((optnone))
+int sqlite3VdbeExecJIT(Vdbe *p) {
   if (p->jitCode == NULL) {
     return sqlite3VdbeExec(p);
   }
@@ -19,28 +20,6 @@ __attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
   }
   return rc;
 }
-
-// __attribute__((optnone))
-// int sqlite3VdbeExecJIT(Vdbe *p) {
-//   int rc;
-
-//   if (p->jitCode == NULL) {
-//     clock_t begin = clock();
-//     rc = sqlite3VdbeExec(p);
-//     clock_t end = clock();
-//     printf("Reference run took %f seconds\n",
-//            (double)(end - begin) / CLOCKS_PER_SEC);
-//     return rc;
-//   }
-
-//   clock_t begin = clock();
-//   rc = ((jitProgram)p->jitCode)();
-//   clock_t end = clock();
-//   printf("JIT run took %f seconds\n", (double)(end - begin) /
-//   CLOCKS_PER_SEC);
-
-//   return rc;
-// }
 
 void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
@@ -947,7 +926,8 @@ Bool execSeekRowid(Vdbe *p, Op *pOp) {
   return 0;
 }
 
-__attribute__((optnone)) void execOpRowid(Vdbe *p, Op *pOp) {
+// __attribute__((optnone))
+void execOpRowid(Vdbe *p, Op *pOp) {
   VdbeCursor *pC;
   i64 v;
   sqlite3_vtab *pVtab;
