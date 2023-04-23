@@ -727,3 +727,19 @@ void genOpIfPos(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   }
   cg.end();
 }
+
+void genDeferredSeek(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execDeferredSeek));
+  cg.call_indirect({cg.i32, cg.i32}, {});
+}
+
+void genOpSeekRowid(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                    std::vector<uint32_t> &branchTable, int currPos) {
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execSeekRowid));
+  cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
+}

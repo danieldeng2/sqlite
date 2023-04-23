@@ -68,6 +68,11 @@ void genOpMove(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 void genOpIfPos(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
                 std::vector<uint32_t>& branchTable, int currPos);
 
+void genDeferredSeek(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
+void genOpSeekRowid(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
+                    std::vector<uint32_t>& branchTable, int currPos);
+
 void genAggrStepZero(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
 void genAggrStepOne(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);

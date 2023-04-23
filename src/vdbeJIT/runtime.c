@@ -6,6 +6,7 @@
 
 typedef int (*jitProgram)();
 
+__attribute__((optnone))
 int sqlite3VdbeExecJIT(Vdbe *p) {
   if (p->jitCode == NULL) {
     return sqlite3VdbeExec(p);
@@ -877,4 +878,71 @@ int execOpCompare(Vdbe *p, Op *pOp, u32 *aPermute) {
     }
   }
   return iCompare;
+}
+
+void execDeferredSeek(Vdbe *p, Op *pOp) {
+  VdbeCursor *pC;      /* The P1 index cursor */
+  VdbeCursor *pTabCur; /* The P2 table cursor (OP_DeferredSeek only) */
+  i64 rowid;           /* Rowid that P1 current points to */
+
+  pC = p->apCsr[pOp->p1];
+
+  int rc = sqlite3VdbeCursorRestore(pC);
+
+  if (!pC->nullRow) {
+    rowid = 0; /* Not needed.  Only used to silence a warning. */
+    rc = sqlite3VdbeIdxRowid(p->db, pC->uc.pCursor, &rowid);
+    if (pOp->opcode == OP_DeferredSeek) {
+      pTabCur = p->apCsr[pOp->p3];
+      pTabCur->nullRow = 0;
+      pTabCur->movetoTarget = rowid;
+      pTabCur->deferredMoveto = 1;
+      pTabCur->cacheStatus = CACHE_STALE;
+      pTabCur->ub.aAltMap = pOp->p4.ai;
+      pTabCur->pAltCursor = pC;
+    } else {
+      Mem *pOut = &p->aMem[pOp->p2];
+      pOut->u.i = rowid;
+    }
+  } else {
+    assert(pOp->opcode == OP_IdxRowid);
+    sqlite3VdbeMemSetNull(&p->aMem[pOp->p2]);
+  }
+}
+
+// true for jump, false for not jump
+Bool execSeekRowid(Vdbe *p, Op *pOp) {
+  VdbeCursor *pC;
+  BtCursor *pCrsr;
+  int res;
+  u64 iKey;
+
+  Mem *pIn3 = &p->aMem[pOp->p3];
+
+  if ((pIn3->flags & (MEM_Int | MEM_IntReal)) == 0) {
+    Mem x = pIn3[0];
+    applyAffinity(&x, SQLITE_AFF_NUMERIC, p->db->enc);
+    if ((x.flags & MEM_Int) == 0) return 1;
+    iKey = x.u.i;
+  } else {
+    iKey = pIn3->u.i;
+  }
+
+  pC = p->apCsr[pOp->p1];
+  pCrsr = pC->uc.pCursor;
+  res = 0;
+  int rc = sqlite3BtreeTableMoveto(pCrsr, iKey, 0, &res);
+  pC->movetoTarget = iKey; /* Used by OP_Delete */
+  pC->nullRow = 0;
+  pC->cacheStatus = CACHE_STALE;
+  pC->deferredMoveto = 0;
+  pC->seekResult = res;
+  if (res != 0) {
+    if (pOp->p2 == 0) {
+      rc = SQLITE_CORRUPT_BKPT;
+    } else {
+      return 1;
+    }
+  }
+  return 0;
 }

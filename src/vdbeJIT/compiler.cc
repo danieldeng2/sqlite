@@ -57,6 +57,10 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       Op *pOp = &p->aOp[i];
 
       // for debugging
+      // if (i == 19){
+      //     genReturnAndStartAt(cg, p, 100000 + pOp->opcode, i);
+      //     break;
+      // }
       // cg.i32.const_(100000 + i);
       // cg.drop();
       switch (pOp->opcode) {
@@ -182,6 +186,12 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           break;
         case OP_IfPos:
           genOpIfPos(cg, p, pOp, branchTable, i);
+          break;
+        case OP_SeekRowid:
+          genOpSeekRowid(cg, p, pOp, branchTable, i);
+          break;
+        case OP_DeferredSeek:
+          genDeferredSeek(cg, p, pOp);
           break;
         default:
           // Return Opcode to notify to implement

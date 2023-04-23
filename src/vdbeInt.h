@@ -559,6 +559,7 @@ extern const u8 sqlite3SmallTypeSizes[];
 */
 VdbeCursor *allocateCursor(Vdbe *p, int iCur, int nField, u8 eCurType);
 void applyNumericAffinity(Mem *pRec, int bTryForInt);
+void applyAffinity(Mem *pRec, char affinity, u8 enc);
 
 void sqlite3VdbeError(Vdbe*, const char *, ...);
 void sqlite3VdbeFreeCursor(Vdbe *, VdbeCursor*);
