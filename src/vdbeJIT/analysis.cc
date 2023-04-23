@@ -27,6 +27,13 @@ std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
         isJumpIn[pOp.p1] = true;
         isJumpIn[pOp.p2] = true;
         isJumpIn[pOp.p3] = true;
+        break;
+      case OP_SeekLT:
+      case OP_SeekLE:
+      case OP_SeekGT:
+      case OP_SeekGE:
+        isJumpIn[i + 2] = true;
+        isJumpIn[pOp.p2] = true;
       case OP_Goto:
       case OP_If:
       case OP_Eq:
@@ -41,6 +48,7 @@ std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
       case OP_Rewind:
       case OP_DecrJumpZero:
       case OP_IfPos:
+      case OP_SeekRowid:
         isJumpIn[pOp.p2] = true;
         break;
     }

@@ -82,6 +82,7 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           genReturnAndStartAt(cg, p, SQLITE_DONE, i);
           break;
         case OP_If:
+        case OP_IfNot:
           genOpIf(cg, p, pOp, branchTable, i);
           break;
         case OP_Transaction:
@@ -190,11 +191,27 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_SeekRowid:
           genOpSeekRowid(cg, p, pOp, branchTable, i);
           break;
+        case OP_Rowid:
+          genOpRowid(cg, p, pOp);
+          break;
         case OP_DeferredSeek:
           genDeferredSeek(cg, p, pOp);
           break;
+        case OP_Affinity:
+          genOpAffinity(cg, p, pOp);
+          break;
+        case OP_Cast:
+          genOpCast(cg, p, pOp);
+          break;
+        case OP_SeekLT:
+        case OP_SeekLE:
+        case OP_SeekGT:
+        case OP_SeekGE:
+          genSeekComparisons(cg, p, pOp, branchTable, i);
+          break;
         default:
           // Return Opcode to notify to implement
+          printf("Compiler: Implement OP %d\n", pOp->opcode);
           genReturnAndStartAt(cg, p, 100000 + pOp->opcode, i);
       }
     };

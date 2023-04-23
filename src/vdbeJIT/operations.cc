@@ -265,6 +265,7 @@ void genOpCopy(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 
 void genOpIf(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
              std::vector<uint32_t> &branchTable, int currPos) {
+  bool ifNot = pOp->opcode == OP_IfNot;
   Mem *pMem = &p->aMem[pOp->p1];
   cg.i32.const_((intptr_t)&pMem->flags);
   cg.i32.load16_u();
@@ -282,7 +283,7 @@ void genOpIf(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
     cg.i32.const_(MEM_Null);
     cg.i32.and_();
     cg.if_(cg.i32);
-    { cg.i32.const_(pOp->p3); }
+    { cg.i32.const_(ifNot ? !pOp->p3 : pOp->p3); }
     cg.else_();
     {
       cg.i32.const_((intptr_t)&pMem->u.r);
@@ -293,6 +294,7 @@ void genOpIf(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
     cg.end();
   }
   cg.end();
+  if (ifNot) cg.i32.eqz();
   genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
 }
 
@@ -742,4 +744,49 @@ void genOpSeekRowid(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   cg.i32.const_(reinterpret_cast<intptr_t>(&execSeekRowid));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
   genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
+}
+
+void genOpRowid(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execOpRowid));
+  cg.call_indirect({cg.i32, cg.i32}, {});
+}
+
+void genOpAffinity(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execOpAffinity));
+  cg.call_indirect({cg.i32, cg.i32}, {});
+}
+
+void genSeekComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                        std::vector<uint32_t> &branchTable, int currPos) {
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execSeekComparisons));
+  cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
+  cg.local.tee(0);
+  cg.i32.const_(1);
+  cg.i32.eq();
+  cg.if_(cg.void_);
+  { genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1, false); }
+  cg.else_();
+  {
+    cg.local.get(0);
+    cg.i32.const_(2);
+    cg.i32.eq();
+    genBranchTo(cg, p, branchTable, currPos, currPos + 2, 1, true);
+  }
+  cg.end();
+}
+
+void genOpCast(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp){
+  Mem *pIn1 = &p->aMem[pOp->p1];
+  cg.i32.const_((intptr_t)pIn1);
+  cg.i32.const_((intptr_t)pOp->p2);
+  cg.i32.const_((intptr_t)p->db->enc);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeMemCast));
+  cg.call_indirect({cg.i32, cg.i32, cg.i32}, {cg.i32});
+  cg.drop();
 }

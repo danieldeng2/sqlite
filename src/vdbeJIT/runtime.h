@@ -21,6 +21,10 @@ int execOpCompare(Vdbe *p, Op *pOp, u32 *aPermute);
 void execDeferredSeek(Vdbe *p, Op *pOp);
 Bool execSeekRowid(Vdbe *p, Op *pOp);
 
+void execOpRowid(Vdbe *p, Op *pOp);
+void execOpAffinity(Vdbe *p, Op *pOp);
+int execSeekComparisons(Vdbe *p, Op *pOp);
+
 #ifdef __cplusplus
 }
 #endif
