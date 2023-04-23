@@ -987,37 +987,37 @@ __attribute__((optnone)) void execOpRowid(Vdbe *p, Op *pOp) {
   pOut->u.i = v;
 }
 
-void execOpAffinity(Vdbe *p, Op *pOp){
-  const char *zAffinity;   /* The affinity to be applied */
+void execOpAffinity(Vdbe *p, Op *pOp) {
+  const char *zAffinity; /* The affinity to be applied */
   zAffinity = pOp->p4.z;
   Mem *pIn1 = &p->aMem[pOp->p1];
-  while( 1 ){
+  while (1) {
     applyAffinity(pIn1, zAffinity[0], p->db->enc);
-    if( zAffinity[0]==SQLITE_AFF_REAL && (pIn1->flags & MEM_Int)!=0 ){
-      if( pIn1->u.i<=140737488355327LL && pIn1->u.i>=-140737488355328LL ){
+    if (zAffinity[0] == SQLITE_AFF_REAL && (pIn1->flags & MEM_Int) != 0) {
+      if (pIn1->u.i <= 140737488355327LL && pIn1->u.i >= -140737488355328LL) {
         pIn1->flags |= MEM_IntReal;
         pIn1->flags &= ~MEM_Int;
-      }else{
+      } else {
         pIn1->u.r = (double)pIn1->u.i;
         pIn1->flags |= MEM_Real;
         pIn1->flags &= ~MEM_Int;
       }
     }
     zAffinity++;
-    if( zAffinity[0]==0 ) return;
+    if (zAffinity[0] == 0) return;
     pIn1++;
   }
   return;
 }
 
-int execSeekComparisons(Vdbe * p, Op *pOp){
-  int res;           /* Comparison result */
-  int oc;            /* Opcode */
-  VdbeCursor *pC;    /* The cursor to seek */
-  UnpackedRecord r;  /* The key to seek for */
-  int nField;        /* Number of columns or fields in the key */
-  i64 iKey;          /* The rowid we are to seek to */
-  int eqOnly;        /* Only interested in == results */
+int execSeekComparisons(Vdbe *p, Op *pOp) {
+  int res;          /* Comparison result */
+  int oc;           /* Opcode */
+  VdbeCursor *pC;   /* The cursor to seek */
+  UnpackedRecord r; /* The key to seek for */
+  int nField;       /* Number of columns or fields in the key */
+  i64 iKey;         /* The rowid we are to seek to */
+  int eqOnly;       /* Only interested in == results */
   int rc;
 
   pC = p->apCsr[pOp->p1];
@@ -1027,18 +1027,18 @@ int execSeekComparisons(Vdbe * p, Op *pOp){
 
   pC->deferredMoveto = 0;
   pC->cacheStatus = CACHE_STALE;
-  if( pC->isTable ){
+  if (pC->isTable) {
     u16 flags3, newType;
     /* The OPFLAG_SEEKEQ/BTREE_SEEK_EQ flag is only set on index cursors */
-    assert( sqlite3BtreeCursorHasHint(pC->uc.pCursor, BTREE_SEEK_EQ)==0
-              || CORRUPT_DB );
+    assert(sqlite3BtreeCursorHasHint(pC->uc.pCursor, BTREE_SEEK_EQ) == 0 ||
+           CORRUPT_DB);
 
     /* The input value in P3 might be of any type: integer, real, string,
     ** blob, or NULL.  But it needs to be an integer before we can do
     ** the seek, so convert it. */
     Mem *pIn3 = &p->aMem[pOp->p3];
     flags3 = pIn3->flags;
-    if( (flags3 & (MEM_Int|MEM_Real|MEM_IntReal|MEM_Str))==MEM_Str ){
+    if ((flags3 & (MEM_Int | MEM_Real | MEM_IntReal | MEM_Str)) == MEM_Str) {
       applyNumericAffinity(pIn3, 0);
     }
     iKey = sqlite3VdbeIntValue(pIn3); /* Get the integer key value */
@@ -1047,12 +1047,12 @@ int execSeekComparisons(Vdbe * p, Op *pOp){
 
     /* If the P3 value could not be converted into an integer without
     ** loss of information, then special processing is required... */
-    if( (newType & (MEM_Int|MEM_IntReal))==0 ){
+    if ((newType & (MEM_Int | MEM_IntReal)) == 0) {
       int c;
-      if( (newType & MEM_Real)==0 ){
-        if( (newType & MEM_Null) || oc>=OP_SeekGE ){
+      if ((newType & MEM_Real) == 0) {
+        if ((newType & MEM_Null) || oc >= OP_SeekGE) {
           return 1;
-        }else{
+        } else {
           rc = sqlite3BtreeLast(pC->uc.pCursor, &res);
           goto seek_not_found;
         }
@@ -1066,25 +1066,25 @@ int execSeekComparisons(Vdbe * p, Op *pOp){
       **        (x >  4.9)    ->     (x >= 5)
       **        (x <= 4.9)    ->     (x <  5)
       */
-      if( c>0 ){
-        if( (oc & 0x0001)==(OP_SeekGT & 0x0001) ) oc--;
+      if (c > 0) {
+        if ((oc & 0x0001) == (OP_SeekGT & 0x0001)) oc--;
       }
 
       /* If the approximation iKey is smaller than the actual real search
       ** term, substitute <= for < and > for >=.  */
-      else if( c<0 ){
-        if( (oc & 0x0001)==(OP_SeekLT & 0x0001) ) oc++;
+      else if (c < 0) {
+        if ((oc & 0x0001) == (OP_SeekLT & 0x0001)) oc++;
       }
     }
     rc = sqlite3BtreeTableMoveto(pC->uc.pCursor, (u64)iKey, 0, &res);
-    pC->movetoTarget = iKey;  /* Used by OP_Delete */
-  }else{
+    pC->movetoTarget = iKey; /* Used by OP_Delete */
+  } else {
     /* For a cursor with the OPFLAG_SEEKEQ/BTREE_SEEK_EQ hint, only the
     ** OP_SeekGE and OP_SeekLE opcodes are allowed, and these must be
     ** immediately followed by an OP_IdxGT or OP_IdxLT opcode, respectively,
     ** with the same key.
     */
-    if( sqlite3BtreeCursorHasHint(pC->uc.pCursor, BTREE_SEEK_EQ) ){
+    if (sqlite3BtreeCursorHasHint(pC->uc.pCursor, BTREE_SEEK_EQ)) {
       eqOnly = 1;
     }
 
@@ -1104,36 +1104,37 @@ int execSeekComparisons(Vdbe * p, Op *pOp){
     r.aMem = &p->aMem[pOp->p3];
     r.eqSeen = 0;
     rc = sqlite3BtreeIndexMoveto(pC->uc.pCursor, &r, &res);
-    if( eqOnly && r.eqSeen==0 ){
-      assert( res!=0 );
+    if (eqOnly && r.eqSeen == 0) {
+      assert(res != 0);
       goto seek_not_found;
     }
   }
-  if( oc>=OP_SeekGE ){  assert( oc==OP_SeekGE || oc==OP_SeekGT );
-    if( res<0 || (res==0 && oc==OP_SeekGT) ){
+  if (oc >= OP_SeekGE) {
+    assert(oc == OP_SeekGE || oc == OP_SeekGT);
+    if (res < 0 || (res == 0 && oc == OP_SeekGT)) {
       res = 0;
       rc = sqlite3BtreeNext(pC->uc.pCursor, 0);
-      if( rc!=SQLITE_OK ){
-        if( rc==SQLITE_DONE ){
+      if (rc != SQLITE_OK) {
+        if (rc == SQLITE_DONE) {
           rc = SQLITE_OK;
           res = 1;
         }
       }
-    }else{
+    } else {
       res = 0;
     }
-  }else{
-    assert( oc==OP_SeekLT || oc==OP_SeekLE );
-    if( res>0 || (res==0 && oc==OP_SeekLT) ){
+  } else {
+    assert(oc == OP_SeekLT || oc == OP_SeekLE);
+    if (res > 0 || (res == 0 && oc == OP_SeekLT)) {
       res = 0;
       rc = sqlite3BtreePrevious(pC->uc.pCursor, 0);
-      if( rc!=SQLITE_OK ){
-        if( rc==SQLITE_DONE ){
+      if (rc != SQLITE_OK) {
+        if (rc == SQLITE_DONE) {
           rc = SQLITE_OK;
           res = 1;
         }
       }
-    }else{
+    } else {
       /* res might be negative because the table is empty.  Check to
       ** see if this is the case.
       */
@@ -1141,12 +1142,155 @@ int execSeekComparisons(Vdbe * p, Op *pOp){
     }
   }
 seek_not_found:
-  if( res )
-    return 1;
+  if (res) return 1;
 
   /* Skip the OP_IdxLt or OP_IdxGT that follows */
-  if( eqOnly )
-    return 2;
-  
+  if (eqOnly) return 2;
+
   return 0;
+}
+
+void execOpOpenEphemeral(Vdbe *p, Op *pOp) {
+  VdbeCursor *pCx;
+  KeyInfo *pKeyInfo;
+
+  static const int vfsFlags =
+      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_EXCLUSIVE |
+      SQLITE_OPEN_DELETEONCLOSE | SQLITE_OPEN_TRANSIENT_DB;
+
+  if (pOp->p3 > 0) {
+    /* Make register reg[P3] into a value that can be used as the data
+    ** form sqlite3BtreeInsert() where the length of the data is zero. */
+    assert(pOp->p2 == 0); /* Only used when number of columns is zero */
+    assert(pOp->opcode == OP_OpenEphemeral);
+    assert(aMem[pOp->p3].flags & MEM_Null);
+    p->aMem[pOp->p3].n = 0;
+    p->aMem[pOp->p3].z = "";
+  }
+  pCx = p->apCsr[pOp->p1];
+  if (pCx && !pCx->noReuse && ALWAYS(pOp->p2 <= pCx->nField)) {
+    /* If the ephermeral table is already open and has no duplicates from
+    ** OP_OpenDup, then erase all existing content so that the table is
+    ** empty again, rather than creating a new table. */
+    assert(pCx->isEphemeral);
+    pCx->seqCount = 0;
+    pCx->cacheStatus = CACHE_STALE;
+    sqlite3BtreeClearTable(pCx->ub.pBtx, pCx->pgnoRoot, 0);
+  } else {
+    pCx = allocateCursor(p, pOp->p1, pOp->p2, CURTYPE_BTREE);
+    pCx->isEphemeral = 1;
+    int rc =
+        sqlite3BtreeOpen(p->db->pVfs, 0, p->db, &pCx->ub.pBtx,
+                         BTREE_OMIT_JOURNAL | BTREE_SINGLE | pOp->p5, vfsFlags);
+    if (rc == SQLITE_OK) {
+      rc = sqlite3BtreeBeginTrans(pCx->ub.pBtx, 1, 0);
+      if (rc == SQLITE_OK) {
+        /* If a transient index is required, create it by calling
+        ** sqlite3BtreeCreateTable() with the BTREE_BLOBKEY flag before
+        ** opening it. If a transient table is required, just use the
+        ** automatically created table with root-page 1 (an BLOB_INTKEY table).
+        */
+        if ((pCx->pKeyInfo = pKeyInfo = pOp->p4.pKeyInfo) != 0) {
+          assert(pOp->p4type == P4_KEYINFO);
+          rc = sqlite3BtreeCreateTable(pCx->ub.pBtx, &pCx->pgnoRoot,
+                                       BTREE_BLOBKEY | pOp->p5);
+          if (rc == SQLITE_OK) {
+            assert(pCx->pgnoRoot == SCHEMA_ROOT + 1);
+            assert(pKeyInfo->db == db);
+            assert(pKeyInfo->enc == ENC(db));
+            rc = sqlite3BtreeCursor(pCx->ub.pBtx, pCx->pgnoRoot, BTREE_WRCSR,
+                                    pKeyInfo, pCx->uc.pCursor);
+          }
+          pCx->isTable = 0;
+        } else {
+          pCx->pgnoRoot = SCHEMA_ROOT;
+          rc = sqlite3BtreeCursor(pCx->ub.pBtx, SCHEMA_ROOT, BTREE_WRCSR, 0,
+                                  pCx->uc.pCursor);
+          pCx->isTable = 1;
+        }
+      }
+      pCx->isOrdered = (pOp->p5 != BTREE_UNORDERED);
+      if (rc) {
+        sqlite3BtreeClose(pCx->ub.pBtx);
+      }
+    }
+  }
+  pCx->nullRow = 1;
+}
+
+// TODO: inline
+void execOpIdxInsert(Vdbe *p, Op *pOp) {
+  BtreePayload x;
+  Mem *pIn2 = &p->aMem[pOp->p2];
+
+  x.nKey = pIn2->n;
+  x.pKey = pIn2->z;
+  x.aMem = p->aMem + pOp->p3;
+  x.nMem = (u16)pOp->p4.i;
+
+  VdbeCursor *pC = p->apCsr[pOp->p1];
+  sqlite3BtreeInsert(
+      pC->uc.pCursor, &x,
+      (pOp->p5 & (OPFLAG_APPEND | OPFLAG_SAVEPOSITION | OPFLAG_PREFORMAT)),
+      ((pOp->p5 & OPFLAG_USESEEKRESULT) ? pC->seekResult : 0));
+  pC->cacheStatus = CACHE_STALE;
+}
+
+void execOpNullRow(Vdbe *p, Op *pOp) {
+  VdbeCursor *pC;
+  pC = p->apCsr[pOp->p1];
+  if (pC == 0) {
+    /* If the cursor is not already open, create a special kind of
+    ** pseudo-cursor that always gives null rows. */
+    pC = allocateCursor(p, pOp->p1, 1, CURTYPE_PSEUDO);
+    pC->seekResult = 0;
+    pC->isTable = 1;
+    pC->noReuse = 1;
+    pC->uc.pCursor = sqlite3BtreeFakeValidCursor();
+  }
+  pC->nullRow = 1;
+  pC->cacheStatus = CACHE_STALE;
+  if (pC->eCurType == CURTYPE_BTREE) {
+    sqlite3BtreeClearCursor(pC->uc.pCursor);
+  }
+}
+
+int execIdxComparisons(Vdbe *p, Op *pOp) {
+  VdbeCursor *pC;
+  int res;
+  UnpackedRecord r;
+
+  pC = p->apCsr[pOp->p1];
+  r.pKeyInfo = pC->pKeyInfo;
+  r.nField = (u16)pOp->p4.i;
+  if (pOp->opcode < OP_IdxLT) {
+    r.default_rc = -1;
+  } else {
+    r.default_rc = 0;
+  }
+  r.aMem = &p->aMem[pOp->p3];
+
+  /* Inlined version of sqlite3VdbeIdxKeyCompare() */
+  {
+    i64 nCellKey = 0;
+    BtCursor *pCur;
+    Mem m;
+
+    assert(pC->eCurType == CURTYPE_BTREE);
+    pCur = pC->uc.pCursor;
+    assert(sqlite3BtreeCursorIsValid(pCur));
+    nCellKey = sqlite3BtreePayloadSize(pCur);
+    sqlite3VdbeMemInit(&m, p->db, 0);
+    sqlite3VdbeMemFromBtreeZeroOffset(pCur, (u32)nCellKey, &m);
+    res = sqlite3VdbeRecordCompareWithSkip(m.n, m.z, &r, 0);
+    sqlite3VdbeMemReleaseMalloc(&m);
+  }
+  /* End of inlined sqlite3VdbeIdxKeyCompare() */
+
+  if ((pOp->opcode & 1) == (OP_IdxLT & 1)) {
+    res = -res;
+  } else {
+    res++;
+  }
+  return (res > 0);
 }

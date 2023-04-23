@@ -18,12 +18,17 @@ void execAggrStepOne(Vdbe *p, Op *pOp);
 void execOpMakeRecord(Vdbe *p, Op *pOp);
 void execOpMove(Vdbe *p, Op *pOp);
 int execOpCompare(Vdbe *p, Op *pOp, u32 *aPermute);
+
 void execDeferredSeek(Vdbe *p, Op *pOp);
 Bool execSeekRowid(Vdbe *p, Op *pOp);
-
 void execOpRowid(Vdbe *p, Op *pOp);
 void execOpAffinity(Vdbe *p, Op *pOp);
 int execSeekComparisons(Vdbe *p, Op *pOp);
+void execOpOpenEphemeral(Vdbe *p, Op *pOp);
+void execOpIdxInsert(Vdbe *p, Op *pOp);
+void execOpNullRow(Vdbe *p, Op *pOp);
+
+int execIdxComparisons(Vdbe *p, Op *pOp);
 
 #ifdef __cplusplus
 }

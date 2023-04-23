@@ -34,6 +34,8 @@ void genOpResultRow(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
 void genOpCopy(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
+void genOpSCopy(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
 void genOpDecrJumpZero(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
                        std::vector<uint32_t>& branchTable, int currPos);
 
@@ -81,6 +83,19 @@ void genSeekComparisons(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
                         std::vector<uint32_t>& branchTable, int currPos);
 
 void genOpCast(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
+void genOpenEphemeral(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
+void genOpNullRow(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
+void genOpIdxInsert(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
+                    uint32_t stackAlloc);
+
+void genOpIsNull(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
+                 std::vector<uint32_t>& branchTable, int currPos);
+
+void genIdxComparisons(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
+                       std::vector<uint32_t>& branchTable, int currPos);
 
 void genAggrStepZero(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 

@@ -263,6 +263,16 @@ void genOpCopy(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.end();
 }
 
+void genOpSCopy(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  Mem *pIn1 = &p->aMem[pOp->p1];
+  Mem *pOut = &p->aMem[pOp->p2];
+  cg.i32.const_((intptr_t)pOut);
+  cg.i32.const_((intptr_t)pIn1);
+  cg.i32.const_(MEM_Ephem);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeMemShallowCopy));
+  cg.call_indirect({cg.i32, cg.i32, cg.i32}, {});
+}
+
 void genOpIf(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
              std::vector<uint32_t> &branchTable, int currPos) {
   bool ifNot = pOp->opcode == OP_IfNot;
@@ -781,7 +791,7 @@ void genSeekComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   cg.end();
 }
 
-void genOpCast(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp){
+void genOpCast(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   Mem *pIn1 = &p->aMem[pOp->p1];
   cg.i32.const_((intptr_t)pIn1);
   cg.i32.const_((intptr_t)pOp->p2);
@@ -789,4 +799,99 @@ void genOpCast(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp){
   cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeMemCast));
   cg.call_indirect({cg.i32, cg.i32, cg.i32}, {cg.i32});
   cg.drop();
+}
+
+void genOpenEphemeral(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execOpOpenEphemeral));
+  cg.call_indirect({cg.i32, cg.i32}, {});
+}
+
+void genOpNullRow(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execOpNullRow));
+  cg.call_indirect({cg.i32, cg.i32}, {});
+}
+
+void genOpIdxInsert(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                    uint32_t stackAlloc) {
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execOpIdxInsert));
+  cg.call_indirect({cg.i32, cg.i32}, {});
+
+  // int pC_idx = 0;
+  // int x_idx = 1;
+  // Mem *pIn2 = &p->aMem[pOp->p2];
+
+  // cg.i32.const_(sizeof(BtreePayload));
+  // cg.call(stackAlloc);
+
+  // cg.local.tee(x_idx);
+  // cg.i32.const_(pIn2->n);
+  // cg.i32.store(1U, offsetof(BtreePayload, nKey));
+
+  // cg.local.get(x_idx);
+  // cg.i32.const_((intptr_t)pIn2->z);
+  // cg.i32.store(1U, offsetof(BtreePayload, pKey));
+
+  // cg.local.get(x_idx);
+  // cg.i32.const_((intptr_t)(p->aMem + pOp->p3));
+  // cg.i32.store(1U, offsetof(BtreePayload, aMem));
+
+  // cg.local.get(x_idx);
+  // cg.i32.const_(pOp->p4.i);
+  // cg.i32.store16(1U, offsetof(BtreePayload, nMem));
+
+  // VdbeCursor **pC_ptr = &p->apCsr[pOp->p1];
+  // cg.i32.const_((intptr_t)pC_ptr);
+  // cg.i32.load();
+  // cg.local.tee(pC_idx);
+
+  // // pC->uc.pCursor
+  // cg.i32.const_(offsetof(VdbeCursor, uc));
+  // cg.i32.add();
+
+  // // &x
+  // cg.local.get(x_idx);
+
+  // cg.i32.const_((pOp->p5 & (OPFLAG_APPEND | OPFLAG_SAVEPOSITION |
+  // OPFLAG_PREFORMAT)));
+
+  // // ((pOp->p5 & OPFLAG_USESEEKRESULT) ? pC->seekResult : 0)
+  // if (pOp->p5 & OPFLAG_USESEEKRESULT) {
+  //   cg.local.get(pC_idx);
+  //   cg.i32.load(1U, offsetof(VdbeCursor, seekResult));
+  // } else {
+  //   cg.i32.const_(0);
+  // }
+
+  // cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3BtreeInsert));
+  // cg.call_indirect({cg.i32, cg.i32, cg.i32, cg.i32}, {cg.i32});
+  // cg.drop();
+
+  // // pC->cacheStatus = CACHE_STALE
+  // cg.local.get(pC_idx);
+  // cg.i32.const_(CACHE_STALE);
+  // cg.i32.store16(1U, offsetof(VdbeCursor, cacheStatus));
+}
+
+void genOpIsNull(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                 std::vector<uint32_t> &branchTable, int currPos) {
+  Mem *pIn1 = &p->aMem[pOp->p1];
+  cg.i32.const_(pIn1->flags);
+  cg.i32.const_(MEM_Null);
+  cg.i32.and_();
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
+}
+
+void genIdxComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                       std::vector<uint32_t> &branchTable, int currPos) {
+  cg.i32.const_((intptr_t)p);
+  cg.i32.const_((intptr_t)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execIdxComparisons));
+  cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
 }

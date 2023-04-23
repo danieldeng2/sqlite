@@ -39,6 +39,7 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
   std::vector<CodeBlock> codeBlocks = *getCodeBlocks(p);
   std::vector<uint32_t> branchTable = *getBranchTable(codeBlocks, p->nOp);
   cg.local(cg.i32);
+  cg.local(cg.i32);
 
   cg.loop(cg.void_);
   for (int i = 0; i < codeBlocks.size(); i++) {
@@ -85,6 +86,15 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_IfNot:
           genOpIf(cg, p, pOp, branchTable, i);
           break;
+        case OP_IsNull:
+          genOpIsNull(cg, p, pOp, branchTable, i);
+          break;
+        case OP_IdxLE:
+        case OP_IdxGT:
+        case OP_IdxLT:
+        case OP_IdxGE:
+          genIdxComparisons(cg, p, pOp, branchTable, i);
+          break;
         case OP_Transaction:
           genOpTransaction(cg, p, pOp, stackAlloc);
           break;
@@ -94,8 +104,12 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_Real:
           genOpReal(cg, p, pOp);
           break;
+        case OP_BeginSubrtn:
         case OP_Null:
           genOpNull(cg, p, pOp);
+          break;
+        case OP_NullRow:
+          genOpNullRow(cg, p, pOp);
           break;
         case OP_Once:
           genOpOnce(cg, p, pOp, branchTable, i);
@@ -132,6 +146,12 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           break;
         case OP_Copy:
           genOpCopy(cg, p, pOp);
+          break;
+        case OP_SCopy:
+          genOpSCopy(cg, p, pOp);
+          break;
+        case OP_IdxInsert:
+          genOpIdxInsert(cg, p, pOp, stackAlloc);
           break;
         case OP_DecrJumpZero:
           genOpDecrJumpZero(cg, p, pOp, branchTable, i);
@@ -202,6 +222,9 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           break;
         case OP_Cast:
           genOpCast(cg, p, pOp);
+          break;
+        case OP_OpenEphemeral:
+          genOpenEphemeral(cg, p, pOp);
           break;
         case OP_SeekLT:
         case OP_SeekLE:
