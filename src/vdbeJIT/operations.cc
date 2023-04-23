@@ -556,28 +556,19 @@ void genOpNext(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
 
 void genOpSorterNext(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                      std::vector<uint32_t> &branchTable, int currPos) {
-  cg.i32.const_((int)p);
-  cg.i32.const_((int)pOp);
-  cg.i32.const_(reinterpret_cast<intptr_t>(&execOpNext));
+  VdbeCursor **pC_ptr = &p->apCsr[pOp->p1];
+  int pC = 0;
+
+  cg.i32.const_((intptr_t)p->db);
+
+  // pC->uc.pCursor
+  cg.i32.const_((intptr_t)pC_ptr);
+  cg.i32.load();
+  cg.local.tee(pC);
+
+  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeSorterNext));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
-  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
-
-  // VdbeCursor **pC_ptr = &p->apCsr[pOp->p1];
-  // int pC = 0;
-
-  // cg.i32.const_((intptr_t)p->db);
-
-  // // pC->uc.pCursor
-  // cg.i32.const_((intptr_t)pC_ptr);
-  // cg.i32.load();
-  // cg.local.tee(pC);
-  // cg.i32.const_((int)offsetof(VdbeCursor, uc));
-  // cg.i32.add();
-  // cg.i32.load();
-
-  // cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeSorterNext));
-  // cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
-  // genNextTail(cg, p, pOp, branchTable, currPos, pC);
+  genNextTail(cg, p, pOp, branchTable, currPos, pC);
 }
 
 void genOpSorterInsert(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
@@ -675,39 +666,44 @@ void genOpJump(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
 }
 
 void genOpMove(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
-  // int i
-  int i_index = 0;
-  int increment = 40;  // size of Mem
+  cg.i32.const_((int)p);
+  cg.i32.const_((int)pOp);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&execOpMove));
+  cg.call_indirect({cg.i32, cg.i32}, {});
 
-  // i = 0
-  cg.i32.const_(0);
-  cg.local.set(i_index);
+  // // int i
+  // int i_index = 0;
+  // int increment = 40;  // size of Mem
 
-  cg.loop(cg.void_);
-  {
-    cg.local.get(i_index);
-    cg.i32.const_((intptr_t)&p->aMem[pOp->p2]);
-    cg.i32.add();
+  // // i = 0
+  // cg.i32.const_(0);
+  // cg.local.set(i_index);
 
-    cg.local.get(i_index);
-    cg.i32.const_((intptr_t)&p->aMem[pOp->p1]);
-    cg.i32.add();
+  // cg.loop(cg.void_);
+  // {
+  //   cg.local.get(i_index);
+  //   cg.i32.const_((intptr_t)&p->aMem[pOp->p2]);
+  //   cg.i32.add();
 
-    cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeMemMove));
-    cg.call_indirect({cg.i32, cg.i32}, {});
+  //   cg.local.get(i_index);
+  //   cg.i32.const_((intptr_t)&p->aMem[pOp->p1]);
+  //   cg.i32.add();
 
-    // i++
-    cg.local.get(i_index);
-    cg.i32.const_(increment);
-    cg.i32.add();
+  //   cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeMemMove));
+  //   cg.call_indirect({cg.i32, cg.i32}, {});
 
-    // i < pOp->p3?
-    cg.local.tee(i_index);
-    cg.i32.const_((pOp->p3 + 1) * increment);
-    cg.i32.ne();
-    cg.br_if(0);
-  }
-  cg.end();
+  //   // i++
+  //   cg.local.get(i_index);
+  //   cg.i32.const_(increment);
+  //   cg.i32.add();
+
+  //   // i < pOp->p3?
+  //   cg.local.tee(i_index);
+  //   cg.i32.const_((pOp->p3 + 1) * increment);
+  //   cg.i32.ne();
+  //   cg.br_if(0);
+  // }
+  // cg.end();
 }
 
 void genOpIfPos(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
@@ -718,13 +714,16 @@ void genOpIfPos(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   cg.i32.const_(0);
   cg.i32.gt_s();
 
-  // pIn1->u.i -= pOp->p3;
-  cg.i32.const_((intptr_t)&pIn1->u.i);
-  cg.i32.const_((intptr_t)&pIn1->u.i);
-  cg.i32.load();
-  cg.i32.const_(pOp->p3);
-  cg.i32.sub();
-  cg.i32.store();
-
-  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
+  cg.if_(cg.void_);
+  {
+    // pIn1->u.i -= pOp->p3;
+    cg.i32.const_((intptr_t)&pIn1->u.i);
+    cg.i32.const_((intptr_t)&pIn1->u.i);
+    cg.i32.load();
+    cg.i32.const_(pOp->p3);
+    cg.i32.sub();
+    cg.i32.store();
+    genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1, false);
+  }
+  cg.end();
 }

@@ -6,7 +6,7 @@
 
 typedef int (*jitProgram)();
 
-__attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
+int sqlite3VdbeExecJIT(Vdbe *p) {
   if (p->jitCode == NULL) {
     return sqlite3VdbeExec(p);
   }
@@ -42,7 +42,6 @@ __attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
 //   return rc;
 // }
 
-__attribute__((optnone)) 
 void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
   if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
@@ -54,7 +53,6 @@ void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
-__attribute__((optnone)) 
 void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
   if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
@@ -66,7 +64,6 @@ void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
-__attribute__((optnone)) 
 void execOpMultiply(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
   if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
@@ -79,7 +76,6 @@ void execOpMultiply(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
 
-__attribute__((optnone)) 
 int execOpenReadWrite(Vdbe *p, Op *pOp) {
   int nField;
   KeyInfo *pKeyInfo;
@@ -169,7 +165,6 @@ open_cursor_set_hints:
   return rc;
 }
 
-__attribute__((optnone)) 
 int execOpRewind(Vdbe *p, Op *pOp) {
   VdbeCursor *pC;
   BtCursor *pCrsr;
@@ -198,7 +193,6 @@ int execOpRewind(Vdbe *p, Op *pOp) {
   return res;
 }
 
-__attribute__((optnone)) 
 int execOpColumn(Vdbe *p, Op *pOp) {
   u32 p2;            /* column number to retrieve */
   VdbeCursor *pC;    /* The VDBE cursor */
@@ -468,23 +462,6 @@ op_column_restart:
   return rc;
 }
 
-__attribute__((optnone)) 
-int execOpNext(Vdbe *p, Op *pOp) {
-  VdbeCursor *pC = p->apCsr[pOp->p1];
-
-  int rc = sqlite3VdbeSorterNext(p->db, pC);
-
-  pC->cacheStatus = CACHE_STALE;
-  if (rc == SQLITE_OK) {
-    pC->nullRow = 0;
-    p->aCounter[pOp->p5]++;
-    return 1;
-  }
-  rc = SQLITE_OK;
-  pC->nullRow = 1;
-  return 0;
-}
-__attribute__((optnone)) 
 int execOpFunction(Vdbe *p, Op *pOp) {
   int i;
   sqlite3_context *pCtx;
@@ -532,7 +509,6 @@ int execOpFunction(Vdbe *p, Op *pOp) {
   return rc;
 }
 
-__attribute__((optnone)) 
 void execAggrStepOne(Vdbe *p, Op *pOp) {
   int i;
   sqlite3_context *pCtx;
@@ -600,7 +576,6 @@ void execAggrStepOne(Vdbe *p, Op *pOp) {
   assert(pCtx->skipFlag == 0);
 }
 
-__attribute__((optnone)) 
 void execOpMakeRecord(Vdbe *p, Op *pOp) {
   Mem *pRec;       /* The new record */
   u64 nData;       /* Number of bytes of data space */
@@ -863,7 +838,23 @@ void execOpMakeRecord(Vdbe *p, Op *pOp) {
   }
 }
 
-__attribute__((optnone)) 
+void execOpMove(Vdbe *p, Op *pOp) {
+  int n = pOp->p3;
+  int p1 = pOp->p1;
+  int p2 = pOp->p2;
+
+  Mem *pIn1 = &p->aMem[p1];
+  Mem *pOut = &p->aMem[p2];
+  do {
+    sqlite3VdbeMemMove(pOut, pIn1);
+    if (((pOut)->flags & MEM_Ephem) != 0 && sqlite3VdbeMemMakeWriteable(pOut)) {
+    }
+
+    pIn1++;
+    pOut++;
+  } while (--n);
+}
+
 int execOpCompare(Vdbe *p, Op *pOp, u32 *aPermute) {
   const KeyInfo *pKeyInfo = pOp->p4.pKeyInfo;
   int p1 = pOp->p1;
