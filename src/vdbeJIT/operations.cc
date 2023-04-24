@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "runtime.h"
+#include "inMemorySort.h"
 
 #define CURSOR_VALID 0
 
@@ -90,7 +91,7 @@ void genOpSorterOpen(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.const_((intptr_t)p->db);
   cg.i32.const_((intptr_t)pOp->p3);
   cg.local.get(pCx_idx);
-  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeSorterInit));
+  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3InMemSorterInit));
   cg.call_indirect({cg.i32, cg.i32, cg.i32}, {cg.i32});
   cg.drop();
 }
@@ -567,7 +568,7 @@ void genOpSorterNext(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   cg.i32.load();
   cg.local.tee(pC);
 
-  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeSorterNext));
+  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3InMemSorterNext));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
   genNextTail(cg, p, pOp, branchTable, currPos, pC);
 }
@@ -579,7 +580,7 @@ void genOpSorterInsert(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.const_((intptr_t)pC_pointer);
   cg.i32.load();
   cg.i32.const_((intptr_t)pIn2);
-  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeSorterWrite));
+  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3InMemSorterWrite));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
   cg.drop();
 }
@@ -624,7 +625,7 @@ void genSorterData(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.const_((intptr_t)pC_ptr);
   cg.i32.load();
   cg.i32.const_((intptr_t)pOut);
-  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3VdbeSorterRowkey));
+  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3InMemSorterRowkey));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
   cg.drop();
 

@@ -14,6 +14,10 @@
 */
 #include "sqliteInt.h"
 #include "vdbeInt.h"
+#ifdef SQLITE_JIT
+void sqlite3InMemSorterClose(sqlite3 *, VdbeCursor *);
+#endif
+
 
 /* Forward references */
 static void freeEphemeralFunction(sqlite3 *db, FuncDef *pDef);
@@ -2660,7 +2664,11 @@ void sqlite3VdbeFreeCursor(Vdbe *p, VdbeCursor *pCx){
 void sqlite3VdbeFreeCursorNN(Vdbe *p, VdbeCursor *pCx){
   switch( pCx->eCurType ){
     case CURTYPE_SORTER: {
-      sqlite3VdbeSorterClose(p->db, pCx);
+      #ifdef SQLITE_JIT
+        sqlite3InMemSorterClose(p->db, pCx);
+      # else
+        sqlite3VdbeSorterClose(p->db, pCx);
+      #endif
       break;
     }
     case CURTYPE_BTREE: {

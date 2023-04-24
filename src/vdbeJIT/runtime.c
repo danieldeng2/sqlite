@@ -1,5 +1,5 @@
 #include "runtime.h"
-
+#include "inMemorySort.h"
 #include "time.h"
 
 #define isSorter(x) ((x)->eCurType == CURTYPE_SORTER)
@@ -154,7 +154,7 @@ int execOpRewind(Vdbe *p, Op *pOp) {
   pC->seekOp = OP_Rewind;
 #endif
   if (isSorter(pC)) {
-    rc = sqlite3VdbeSorterRewind(pC, &res);
+    rc = sqlite3InMemSorterRewind(pC, &res);
   } else {
     assert(pC->eCurType == CURTYPE_BTREE);
     pCrsr = pC->uc.pCursor;
@@ -492,16 +492,6 @@ void execAggrStepOne(Vdbe *p, Op *pOp) {
   pCtx = pOp->p4.pCtx;
   pMem = &p->aMem[pOp->p3];
 
-#ifdef SQLITE_DEBUG
-  if (pOp->p1) {
-    /* This is an OP_AggInverse call.  Verify that xStep has always
-    ** been called at least once prior to any xInverse call. */
-    assert(pMem->uTemp == 0x1122e0e3);
-  } else {
-    /* This is an OP_AggStep call.  Mark it as such. */
-    pMem->uTemp = 0x1122e0e3;
-  }
-#endif
 
   /* If this function is inside of a trigger, the register array in aMem[]
   ** might change from one evaluation to the next.  The next block of code
@@ -512,42 +502,8 @@ void execAggrStepOne(Vdbe *p, Op *pOp) {
     for (i = pCtx->argc - 1; i >= 0; i--) pCtx->argv[i] = &p->aMem[pOp->p2 + i];
   }
 
-#ifdef SQLITE_DEBUG
-  for (i = 0; i < pCtx->argc; i++) {
-    assert(memIsValid(pCtx->argv[i]));
-    REGISTER_TRACE(pOp->p2 + i, pCtx->argv[i]);
-  }
-#endif
-
   pMem->n++;
-  assert(pCtx->pOut->flags == MEM_Null);
-  assert(pCtx->isError == 0);
-  assert(pCtx->skipFlag == 0);
-#ifndef SQLITE_OMIT_WINDOWFUNC
-  if (pOp->p1) {
-    (pCtx->pFunc->xInverse)(pCtx, pCtx->argc, pCtx->argv);
-  } else
-#endif
-    (pCtx->pFunc->xSFunc)(pCtx, pCtx->argc,
-                          pCtx->argv); /* IMP: R-24505-23230 */
-
-  if (pCtx->isError) {
-    if (pCtx->isError > 0) {
-      sqlite3VdbeError(p, "%s", sqlite3_value_text(pCtx->pOut));
-      int rc = pCtx->isError;
-    }
-    if (pCtx->skipFlag) {
-      assert(pOp[-1].opcode == OP_CollSeq);
-      i = pOp[-1].p1;
-      if (i) sqlite3VdbeMemSetInt64(&p->aMem[i], 1);
-      pCtx->skipFlag = 0;
-    }
-    sqlite3VdbeMemRelease(pCtx->pOut);
-    pCtx->pOut->flags = MEM_Null;
-    pCtx->isError = 0;
-  }
-  assert(pCtx->pOut->flags == MEM_Null);
-  assert(pCtx->skipFlag == 0);
+  (pCtx->pFunc->xSFunc)(pCtx, pCtx->argc, pCtx->argv);
 }
 
 void execOpMakeRecord(Vdbe *p, Op *pOp) {
