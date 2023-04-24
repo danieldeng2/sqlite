@@ -68,11 +68,6 @@ int execOpenReadWrite(Vdbe *p, Op *pOp) {
   sqlite3 *db = p->db;
   Mem *aMem = p->aMem;
 
-  assert(pOp->opcode == OP_OpenWrite || pOp->p5 == 0 ||
-         pOp->p5 == OPFLAG_SEEKEQ);
-  assert(pOp->opcode == OP_OpenRead || pOp->opcode == OP_ReopenIdx ||
-         p->readOnly == 0);
-
   nField = 0;
   pKeyInfo = 0;
   p2 = (u32)pOp->p2;
@@ -870,19 +865,13 @@ void execDeferredSeek(Vdbe *p, Op *pOp) {
   if (!pC->nullRow) {
     rowid = 0; /* Not needed.  Only used to silence a warning. */
     rc = sqlite3VdbeIdxRowid(p->db, pC->uc.pCursor, &rowid);
-    if (pOp->opcode == OP_DeferredSeek) {
-      pTabCur = p->apCsr[pOp->p3];
-      pTabCur->nullRow = 0;
-      pTabCur->movetoTarget = rowid;
-      pTabCur->deferredMoveto = 1;
-      pTabCur->cacheStatus = CACHE_STALE;
-      pTabCur->ub.aAltMap = pOp->p4.ai;
-      pTabCur->pAltCursor = pC;
-    } else {
-      Mem *pOut = &p->aMem[pOp->p2];
-      pOut->flags = MEM_Int;
-      pOut->u.i = rowid;
-    }
+    pTabCur = p->apCsr[pOp->p3];
+    pTabCur->nullRow = 0;
+    pTabCur->movetoTarget = rowid;
+    pTabCur->deferredMoveto = 1;
+    pTabCur->cacheStatus = CACHE_STALE;
+    pTabCur->ub.aAltMap = pOp->p4.ai;
+    pTabCur->pAltCursor = pC;
   } else {
     assert(pOp->opcode == OP_IdxRowid);
     sqlite3VdbeMemSetNull(&p->aMem[pOp->p2]);

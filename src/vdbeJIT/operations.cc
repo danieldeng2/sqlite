@@ -16,9 +16,8 @@ static void genBranchTo(wasmblr::CodeGenerator &cg, Vdbe *p,
   if (toBlock > fromBlock) {
     br_destination = toBlock - fromBlock - 1;
   } else {
-    cg.i32.const_((int32_t)&p->pc);
     cg.i32.const_(to);
-    cg.i32.store();
+    cg.local.set(0);
     br_destination = branchTable[branchTable.size() - 1] - fromBlock;
   }
   br_destination += offset;
@@ -66,14 +65,12 @@ void genOpReturn(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
 
   cg.if_(cg.void_);
   {
-    cg.i32.const_((int32_t)&p->pc);
     // GOTO pIn1->u.i + 1
     cg.i32.const_((int32_t)&pIn1->u.i);
     cg.i32.load();
     cg.i32.const_(1);
     cg.i32.add();
-
-    cg.i32.store();
+    cg.local.set(0);
     cg.br(branchTable[branchTable.size() - 1] - branchTable[currPos] + 1);
   }
   cg.end();
@@ -196,15 +193,7 @@ void genOpRewind(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   cg.i32.const_((int)pOp);
   cg.i32.const_(reinterpret_cast<intptr_t>(&execOpRewind));
   cg.call_indirect({cg.i32, cg.i32}, {cg.i32});
-
-  cg.if_(cg.void_);
-  {
-    cg.i32.const_((int32_t)&p->pc);
-    cg.i32.const_(pOp->p2);
-    cg.i32.store(2U, 0U);
-    genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1);
-  }
-  cg.end();
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
 }
 
 // output=r[P1@P2]

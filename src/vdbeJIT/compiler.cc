@@ -41,14 +41,15 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
   cg.local(cg.i32);
   cg.local(cg.i32);
 
+  cg.i32.const_((int32_t)&p->pc);
+  cg.i32.load(2U, 0U);
+  cg.local.set(0);
+
   cg.loop(cg.void_);
   for (int i = 0; i < codeBlocks.size(); i++) {
     cg.block(cg.void_);
   }
-
-  cg.i32.const_((int32_t)&p->pc);
-  cg.i32.load(2U, 0U);
-
+  cg.local.get(0);
   cg.br_table(branchTable, codeBlocks.size());
   cg.end();
 
