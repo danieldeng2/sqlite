@@ -1,114 +1,96 @@
 #pragma once
 
 #include "sqliteInt.h"
+#include "utils.h"
 #include "vdbeInt.h"
 #include "wasmblr.h"
 
-void genOpInit(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-               std::vector<uint32_t>& branchTable, int currPos);
-void genOpGoto(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-               std::vector<uint32_t>& branchTable, int currPos);
+void genOpInit(CompilerContext* ctx, Op* pOp, int currPos);
+void genOpGoto(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpIf(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-             std::vector<uint32_t>& branchTable, int currPos);
+void genOpIf(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpTransaction(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                      uint32_t stackAlloc);
-void genOpInteger(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpTransaction(CompilerContext* ctx, Op* pOp);
+void genOpInteger(CompilerContext* ctx, Op* pOp);
 
-void genOpReal(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpReal(CompilerContext* ctx, Op* pOp);
 
-void genOpNull(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpNull(CompilerContext* ctx, Op* pOp);
 
-void genOpOnce(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-               std::vector<uint32_t>& branchTable, int currPos);
+void genOpOnce(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpReadOpWrite(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpReadOpWrite(CompilerContext* ctx, Op* pOp);
 
-void genOpSorterOpen(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpSorterOpen(CompilerContext* ctx, Op* pOp);
 
-void genOpRewind(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                 std::vector<uint32_t>& branchTable, int currPos);
+void genOpRewind(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpResultRow(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpResultRow(CompilerContext* ctx, Op* pOp);
 
-void genOpCopy(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpCopy(CompilerContext* ctx, Op* pOp);
 
-void genOpSCopy(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpSCopy(CompilerContext* ctx, Op* pOp);
 
-void genOpDecrJumpZero(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                       std::vector<uint32_t>& branchTable, int currPos);
+void genOpDecrJumpZero(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpString(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpString(CompilerContext* ctx, Op* pOp);
 
-void genComparisons(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                    std::vector<uint32_t>& branchTable, int currPos);
+void genComparisons(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpAggFinal(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpAggFinal(CompilerContext* ctx, Op* pOp);
 
-void genOpColumn(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpColumn(CompilerContext* ctx, Op* pOp);
 
-void genOpFunction(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpFunction(CompilerContext* ctx, Op* pOp);
 
-void genMathOps(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genMathOps(CompilerContext* ctx, Op* pOp);
 
-void genMakeRecord(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genMakeRecord(CompilerContext* ctx, Op* pOp);
 
-void genOpSorterInsert(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpSorterInsert(CompilerContext* ctx, Op* pOp);
 
-void genOpenPseudo(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpenPseudo(CompilerContext* ctx, Op* pOp);
 
-void genSorterData(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genSorterData(CompilerContext* ctx, Op* pOp);
 
-void genOpCompare(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp, u32* aPermute);
+void genOpCompare(CompilerContext* ctx, Op* pOp, u32* aPermute);
 
-void genOpJump(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-               std::vector<uint32_t>& branchTable, int currPos);
+void genOpJump(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpMove(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpMove(CompilerContext* ctx, Op* pOp);
 
-void genOpIfPos(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                std::vector<uint32_t>& branchTable, int currPos);
+void genOpIfPos(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genDeferredSeek(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genDeferredSeek(CompilerContext* ctx, Op* pOp);
 
-void genOpSeekRowid(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                    std::vector<uint32_t>& branchTable, int currPos);
+void genOpSeekRowid(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpRowid(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpRowid(CompilerContext* ctx, Op* pOp);
 
-void genOpAffinity(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpAffinity(CompilerContext* ctx, Op* pOp);
 
-void genSeekComparisons(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                        std::vector<uint32_t>& branchTable, int currPos);
+void genSeekComparisons(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpCast(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpCast(CompilerContext* ctx, Op* pOp);
 
-void genOpenEphemeral(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpenEphemeral(CompilerContext* ctx, Op* pOp);
 
-void genOpNullRow(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genOpNullRow(CompilerContext* ctx, Op* pOp);
 
-void genOpIdxInsert(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                    uint32_t stackAlloc);
+void genOpIdxInsert(CompilerContext* ctx, Op* pOp);
 
-void genOpIsNull(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                 std::vector<uint32_t>& branchTable, int currPos);
+void genOpIsNull(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genIdxComparisons(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                       std::vector<uint32_t>& branchTable, int currPos);
+void genIdxComparisons(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genAggrStepZero(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genAggrStepZero(CompilerContext* ctx, Op* pOp);
 
-void genAggrStepOne(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+void genAggrStepOne(CompilerContext* ctx, Op* pOp);
 
-void genOpNext(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-               std::vector<uint32_t>& branchTable, int currPos);
+void genOpNext(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpSorterNext(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                     std::vector<uint32_t>& branchTable, int currPos);
+void genOpSorterNext(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpGoSub(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                std::vector<uint32_t>& branchTable, int currPos);
+void genOpGoSub(CompilerContext* ctx, Op* pOp, int currPos);
 
-void genOpReturn(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
-                 std::vector<uint32_t>& branchTable, int currPos);
+void genOpReturn(CompilerContext* ctx, Op* pOp, int currPos);

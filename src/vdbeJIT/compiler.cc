@@ -1,5 +1,5 @@
-#include "analysis.h"
 #include "operations.h"
+#include "utils.h"
 #include "wasmblr.h"
 
 static inline uint32_t genRelocations(wasmblr::CodeGenerator &cg,
@@ -25,8 +25,11 @@ static inline uint32_t genRelocations(wasmblr::CodeGenerator &cg,
   });
 }
 
-static inline void genReturnAndStartAt(wasmblr::CodeGenerator &cg, Vdbe *p,
-                                       int returnValue, int startIndex) {
+static inline void genReturnAndStartAt(CompilerContext *ctx, int returnValue,
+                                       int startIndex) {
+  Vdbe *p = ctx->p;
+  wasmblr::CodeGenerator &cg = ctx->cg;
+
   cg.i32.const_((int32_t)&p->pc);
   cg.i32.const_(startIndex);
   cg.i32.store(2U, 0U);
@@ -34,10 +37,12 @@ static inline void genReturnAndStartAt(wasmblr::CodeGenerator &cg, Vdbe *p,
   cg.return_();
 }
 
-static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
-                                   uint32_t stackAlloc) {
-  std::vector<CodeBlock> codeBlocks = *getCodeBlocks(p);
-  std::vector<uint32_t> branchTable = *getBranchTable(codeBlocks, p->nOp);
+static inline void genMainFunction(CompilerContext *ctx) {
+  std::vector<CodeBlock> codeBlocks = ctx->codeBlocks;
+  std::vector<uint32_t> branchTable = ctx->branchTable;
+  Vdbe *p = ctx->p;
+  wasmblr::CodeGenerator &cg = ctx->cg;
+
   cg.local(cg.i32);
   cg.local(cg.i32);
 
@@ -60,7 +65,7 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
 
       // for debugging
       // if (i == 19){
-      //     genReturnAndStartAt(cg, p, 100000 + pOp->opcode, i);
+      //     genReturnAndStartAt(ctx, 100000 + pOp->opcode, i);
       //     break;
       // }
       // cg.i32.const_(100000 + i);
@@ -69,107 +74,107 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_Noop:
           break;
         case OP_Init:
-          genOpInit(cg, p, pOp, branchTable, i);
+          genOpInit(ctx, pOp, i);
           break;
         case OP_Return:
-          genOpReturn(cg, p, pOp, branchTable, i);
+          genOpReturn(ctx, pOp, i);
           break;
         case OP_Goto:
-          genOpGoto(cg, p, pOp, branchTable, i);
+          genOpGoto(ctx, pOp, i);
           break;
         case OP_Gosub:
-          genOpGoSub(cg, p, pOp, branchTable, i);
+          genOpGoSub(ctx, pOp, i);
           break;
         case OP_Halt:
-          genReturnAndStartAt(cg, p, SQLITE_DONE, i);
+          genReturnAndStartAt(ctx, SQLITE_DONE, i);
           break;
         case OP_If:
         case OP_IfNot:
-          genOpIf(cg, p, pOp, branchTable, i);
+          genOpIf(ctx, pOp, i);
           break;
         case OP_IsNull:
-          genOpIsNull(cg, p, pOp, branchTable, i);
+          genOpIsNull(ctx, pOp, i);
           break;
         case OP_IdxLE:
         case OP_IdxGT:
         case OP_IdxLT:
         case OP_IdxGE:
-          genIdxComparisons(cg, p, pOp, branchTable, i);
+          genIdxComparisons(ctx, pOp, i);
           break;
         case OP_Transaction:
-          genOpTransaction(cg, p, pOp, stackAlloc);
+          genOpTransaction(ctx, pOp);
           break;
         case OP_Integer:
-          genOpInteger(cg, p, pOp);
+          genOpInteger(ctx, pOp);
           break;
         case OP_Real:
-          genOpReal(cg, p, pOp);
+          genOpReal(ctx, pOp);
           break;
         case OP_BeginSubrtn:
         case OP_Null:
-          genOpNull(cg, p, pOp);
+          genOpNull(ctx, pOp);
           break;
         case OP_NullRow:
-          genOpNullRow(cg, p, pOp);
+          genOpNullRow(ctx, pOp);
           break;
         case OP_Once:
-          genOpOnce(cg, p, pOp, branchTable, i);
+          genOpOnce(ctx, pOp, i);
           break;
         case OP_OpenRead:
         case OP_OpenWrite:
-          genOpReadOpWrite(cg, p, pOp);
+          genOpReadOpWrite(ctx, pOp);
           break;
         case OP_SorterOpen:
-          genOpSorterOpen(cg, p, pOp);
+          genOpSorterOpen(ctx, pOp);
           break;
         case OP_SorterSort:
         case OP_Sort:
         case OP_Rewind:
-          genOpRewind(cg, p, pOp, branchTable, i);
+          genOpRewind(ctx, pOp, i);
           break;
         case OP_Column:
-          genOpColumn(cg, p, pOp);
+          genOpColumn(ctx, pOp);
           break;
         case OP_Function:
-          genOpFunction(cg, p, pOp);
+          genOpFunction(ctx, pOp);
           break;
         case OP_Add:
         case OP_Subtract:
         case OP_Multiply:
-          genMathOps(cg, p, pOp);
+          genMathOps(ctx, pOp);
           break;
         case OP_ResultRow:
-          genOpResultRow(cg, p, pOp);
-          genReturnAndStartAt(cg, p, SQLITE_ROW, i + 1);
+          genOpResultRow(ctx, pOp);
+          genReturnAndStartAt(ctx, SQLITE_ROW, i + 1);
           break;
         case OP_Move:
-          genOpMove(cg, p, pOp);
+          genOpMove(ctx, pOp);
           break;
         case OP_Copy:
-          genOpCopy(cg, p, pOp);
+          genOpCopy(ctx, pOp);
           break;
         case OP_SCopy:
-          genOpSCopy(cg, p, pOp);
+          genOpSCopy(ctx, pOp);
           break;
         case OP_IdxInsert:
-          genOpIdxInsert(cg, p, pOp, stackAlloc);
+          genOpIdxInsert(ctx, pOp);
           break;
         case OP_DecrJumpZero:
-          genOpDecrJumpZero(cg, p, pOp, branchTable, i);
+          genOpDecrJumpZero(ctx, pOp, i);
           break;
         case OP_Next:
-          genOpNext(cg, p, pOp, branchTable, i);
+          genOpNext(ctx, pOp, i);
           break;
         case OP_SorterNext:
-          genOpSorterNext(cg, p, pOp, branchTable, i);
+          genOpSorterNext(ctx, pOp, i);
           break;
         case OP_String8:
           pOp->p1 = 0x3fffffff & (int)strlen(pOp->p4.z);
           pOp->opcode = OP_String;
-          genOpString(cg, p, pOp);
+          genOpString(ctx, pOp);
           break;
         case OP_String:
-          genOpString(cg, p, pOp);
+          genOpString(ctx, pOp);
           break;
         case OP_Eq:
         case OP_Ne:
@@ -177,66 +182,66 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_Le:
         case OP_Gt:
         case OP_Ge:
-          genComparisons(cg, p, pOp, branchTable, i);
+          genComparisons(ctx, pOp, i);
           break;
         case OP_AggStep:
-          genAggrStepZero(cg, p, pOp);
+          genAggrStepZero(ctx, pOp);
           break;
         case OP_AggStep1:
-          genAggrStepOne(cg, p, pOp);
+          genAggrStepOne(ctx, pOp);
           break;
         case OP_AggFinal:
-          genOpAggFinal(cg, p, pOp);
+          genOpAggFinal(ctx, pOp);
           break;
         case OP_MakeRecord:
-          genMakeRecord(cg, p, pOp);
+          genMakeRecord(ctx, pOp);
           break;
         case OP_SorterInsert:
-          genOpSorterInsert(cg, p, pOp);
+          genOpSorterInsert(ctx, pOp);
           break;
         case OP_OpenPseudo:
-          genOpenPseudo(cg, p, pOp);
+          genOpenPseudo(ctx, pOp);
           break;
         case OP_SorterData:
-          genSorterData(cg, p, pOp);
+          genSorterData(ctx, pOp);
           break;
         case OP_Compare:
-          genOpCompare(cg, p, pOp, pOp[-1].p4.ai + 1);
+          genOpCompare(ctx, pOp, pOp[-1].p4.ai + 1);
           break;
         case OP_Jump:
-          genOpJump(cg, p, pOp, branchTable, i);
+          genOpJump(ctx, pOp, i);
           break;
         case OP_IfPos:
-          genOpIfPos(cg, p, pOp, branchTable, i);
+          genOpIfPos(ctx, pOp, i);
           break;
         case OP_SeekRowid:
-          genOpSeekRowid(cg, p, pOp, branchTable, i);
+          genOpSeekRowid(ctx, pOp, i);
           break;
         case OP_Rowid:
-          genOpRowid(cg, p, pOp);
+          genOpRowid(ctx, pOp);
           break;
         case OP_DeferredSeek:
-          genDeferredSeek(cg, p, pOp);
+          genDeferredSeek(ctx, pOp);
           break;
         case OP_Affinity:
-          genOpAffinity(cg, p, pOp);
+          genOpAffinity(ctx, pOp);
           break;
         case OP_Cast:
-          genOpCast(cg, p, pOp);
+          genOpCast(ctx, pOp);
           break;
         case OP_OpenEphemeral:
-          genOpenEphemeral(cg, p, pOp);
+          genOpenEphemeral(ctx, pOp);
           break;
         case OP_SeekLT:
         case OP_SeekLE:
         case OP_SeekGT:
         case OP_SeekGE:
-          genSeekComparisons(cg, p, pOp, branchTable, i);
+          genSeekComparisons(ctx, pOp, i);
           break;
         default:
           // Return Opcode to notify to implement
           printf("Compiler: Implement OP %d\n", pOp->opcode);
-          genReturnAndStartAt(cg, p, 100000 + pOp->opcode, i);
+          genReturnAndStartAt(ctx, 100000 + pOp->opcode, i);
       }
     };
     cg.end();
@@ -245,17 +250,12 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
 
 std::vector<uint8_t> genProgram(Vdbe *p) {
   wasmblr::CodeGenerator cg;
-  cg.memory(0).import_("env", "memory");
-  cg.table(0U, cg.funcRef).import_("env", "__indirect_function_table");
-  auto stackSave = cg.function({}, {cg.i32}).import_("env", "stackSave");
-  auto stackRestore = cg.function({cg.i32}, {}).import_("env", "stackRestore");
-  auto stackAlloc =
-      cg.function({cg.i32}, {cg.i32}).import_("env", "stackAlloc");
+  CompilerContext ctx = genCompilerContext(cg, p);
 
   auto main_func = cg.function({}, {cg.i32}, [&]() {
-    cg.call(stackSave);
-    genMainFunction(cg, p, stackAlloc);
-    cg.call(stackRestore);
+    cg.call(ctx.imports["stackSave"]);
+    genMainFunction(&ctx);
+    cg.call(ctx.imports["stackRestore"]);
     cg.i32.const_(SQLITE_OK);
   });
   auto relocations = genRelocations(cg, &(p->jitCode));
