@@ -64,6 +64,7 @@ struct VdbeOp {
     Expr *pExpr;           /* Used when p4type is P4_EXPR */
 #endif
   } p4;
+
 #ifdef SQLITE_ENABLE_EXPLAIN_COMMENTS
   char *zComment;          /* Comment to improve readability */
 #endif

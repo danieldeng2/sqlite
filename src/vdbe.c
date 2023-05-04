@@ -1750,6 +1750,10 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
 int_math:
     iA = pIn1->u.i;
     iB = pIn2->u.i;
+
+    // zeroth branch: both values are integers
+    p->traces[(int) (pOp - p->aOp)][0]++;
+
     switch( pOp->opcode ){
       case OP_Add:       if( sqlite3AddInt64(&iB,iA) ) goto fp_math;  break;
       case OP_Subtract:  if( sqlite3SubInt64(&iB,iA) ) goto fp_math;  break;
@@ -1772,6 +1776,10 @@ int_math:
   }else if( ((type1 | type2) & MEM_Null)!=0 ){
     goto arithmetic_result_is_null;
   }else{
+    // first branch: real values are used
+    p->traces[(int) (pOp - p->aOp)][1]++;
+
+
     type1 = numericType(pIn1);
     type2 = numericType(pIn2);
     if( (type1 & type2 & MEM_Int)!=0 ) goto int_math;

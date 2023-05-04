@@ -494,6 +494,8 @@ struct Vdbe {
   SubProgram *pProgram;   /* Linked list of all sub-programs used by VM */
   AuxData *pAuxData;      /* Linked list of auxdata allocations */
   void *jitCode;          /* Function code used for jit compilation*/
+  int traces[100][20];    /* Traces to use for optimisation */
+
 #ifdef SQLITE_ENABLE_STMT_SCANSTATUS
   int nScan;              /* Entries in aScan[] */
   ScanStatus *aScan;      /* Scan definitions for sqlite3_stmt_scanstatus() */
