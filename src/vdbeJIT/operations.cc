@@ -447,13 +447,6 @@ void genMathOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.const_((int)&p->aMem[pOp->p2]);
   cg.i32.const_((int)&p->aMem[pOp->p3]);
 
-  printf("Line %d: ", (int) (pOp - p->aOp));
-  for (int i = 0; i < 10; i++){
-    printf("%d ", p->traces[(int) (pOp - p->aOp)][i]);
-  }
-  printf("\n");
-
-
   switch (pOp->opcode) {
     case OP_Add:
       cg.i32.const_(reinterpret_cast<intptr_t>(&execOpAdd));

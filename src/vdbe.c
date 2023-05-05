@@ -710,7 +710,7 @@ static const char *vdbeMemTypeName(Mem *pMem){
 ** Execute as much of a VDBE program as we can.
 ** This is the core of sqlite3_step().  
 */
-// __attribute__((optnone)) 
+__attribute__((optnone)) 
 int sqlite3VdbeExec(
   Vdbe *p                    /* The VDBE */
 ){
@@ -2836,6 +2836,9 @@ op_column_restart:
   assert( pC->eCurType!=CURTYPE_SORTER );
 
   if( pC->cacheStatus!=p->cacheCtr ){                /*OPTIMIZATION-IF-FALSE*/
+    // branch 0: pC->cacheStatus != p->cacheCtr
+    p->traces[(int) (pOp - p->aOp)][0]++;
+
     if( pC->nullRow ){
       if( pC->eCurType==CURTYPE_PSEUDO && pC->seekResult>0 ){
         /* For the special case of as pseudo-cursor, the seekResult field
@@ -2868,13 +2871,8 @@ op_column_restart:
         if( rc ) goto abort_due_to_error;
         goto op_column_restart;
       }
-      assert( pC->eCurType==CURTYPE_BTREE );
-      assert( pCrsr );
-      assert( sqlite3BtreeCursorIsValid(pCrsr) );
       pC->payloadSize = sqlite3BtreePayloadSize(pCrsr);
       pC->aRow = sqlite3BtreePayloadFetch(pCrsr, &pC->szRow);
-      assert( pC->szRow<=pC->payloadSize );
-      assert( pC->szRow<=65536 );  /* Maximum page size is 64KiB */
     }
     pC->cacheStatus = p->cacheCtr;
     if( (aOffset[0] = pC->aRow[0])<0x80 ){
@@ -2933,6 +2931,9 @@ op_column_restart:
   ** parsed and valid information is in aOffset[] and pC->aType[].
   */
   if( pC->nHdrParsed<=p2 ){
+    // 2nd branch: pC->nHdrParsed <= p2
+    p->traces[(int) (pOp - p->aOp)][2]++;
+
     /* If there is more header available for parsing in the record, try
     ** to extract additional fields up through the p2+1-th field 
     */
@@ -3005,6 +3006,9 @@ op_column_restart:
       goto op_column_out;
     }
   }else{
+    // 3nd branch: pC->nHdrParsed > p2
+    p->traces[(int) (pOp - p->aOp)][3]++;
+
     t = pC->aType[p2];
   }
 
@@ -3015,7 +3019,6 @@ op_column_restart:
   assert( p2<pC->nHdrParsed );
   assert( rc==SQLITE_OK );
   pDest = &aMem[pOp->p3];
-  memAboutToChange(p, pDest);
   assert( sqlite3VdbeCheckMemInvariants(pDest) );
   if( VdbeMemDynamic(pDest) ){
     sqlite3VdbeMemSetNull(pDest);

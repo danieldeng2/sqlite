@@ -27,7 +27,9 @@ void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
     pOut->u.i = pIn1->u.i + pIn2->u.i;
     flag = MEM_Int;
   } else {
-    pOut->u.r = sqlite3VdbeRealValue(pIn1) + sqlite3VdbeRealValue(pIn2);
+    double p1 = (pIn1->flags & MEM_Real) ? pIn1->u.r : (double)pIn1->u.i;
+    double p2 = (pIn2->flags & MEM_Real) ? pIn2->u.r : (double)pIn2->u.i;
+    pOut->u.r = p2 + p1;
     flag = MEM_Real;
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
@@ -38,18 +40,23 @@ void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
     pOut->u.i = pIn2->u.i - pIn1->u.i;
     flag = MEM_Int;
   } else {
-    pOut->u.r = sqlite3VdbeRealValue(pIn2) - sqlite3VdbeRealValue(pIn1);
+    double p1 = (pIn1->flags & MEM_Real) ? pIn1->u.r : (double)pIn1->u.i;
+    double p2 = (pIn2->flags & MEM_Real) ? pIn2->u.r : (double)pIn2->u.i;
+    pOut->u.r = p2 - p1;
     flag = MEM_Real;
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
 }
+
 void execOpMultiply(Mem *pIn1, Mem *pIn2, Mem *pOut) {
   u16 flag;
   if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
     pOut->u.i = pIn1->u.i * pIn2->u.i;
     flag = MEM_Int;
   } else {
-    pOut->u.r = sqlite3VdbeRealValue(pIn2) * sqlite3VdbeRealValue(pIn1);
+    double p1 = (pIn1->flags & MEM_Real) ? pIn1->u.r : (double)pIn1->u.i;
+    double p2 = (pIn2->flags & MEM_Real) ? pIn2->u.r : (double)pIn2->u.i;
+    pOut->u.r = p2 * p1;
     flag = MEM_Real;
   }
   pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
@@ -187,22 +194,16 @@ int execOpColumn(Vdbe *p, Op *pOp) {
   sqlite3 *db = p->db;
   u8 encoding = ENC(db);
 
-  assert(pOp->p1 >= 0 && pOp->p1 < p->nCursor);
-  assert(pOp->p3 > 0 && pOp->p3 <= (p->nMem + 1 - p->nCursor));
   pC = p->apCsr[pOp->p1];
   p2 = (u32)pOp->p2;
 
 op_column_restart:
-  assert(pC != 0);
-  assert(p2 < (u32)pC->nField ||
-         (pC->eCurType == CURTYPE_PSEUDO && pC->seekResult == 0));
   aOffset = pC->aOffset;
-  assert(aOffset == pC->aType + pC->nField);
-  assert(pC->eCurType != CURTYPE_VTAB);
-  assert(pC->eCurType != CURTYPE_PSEUDO || pC->nullRow);
-  assert(pC->eCurType != CURTYPE_SORTER);
 
   if (pC->cacheStatus != p->cacheCtr) { /*OPTIMIZATION-IF-FALSE*/
+    // branch 0: pC->cacheStatus != p->cacheCtr
+    p->traces[(int) (pOp - p->aOp)][0]++;
+
     if (pC->nullRow) {
       if (pC->eCurType == CURTYPE_PSEUDO && pC->seekResult > 0) {
         /* For the special case of as pseudo-cursor, the seekResult field
@@ -221,7 +222,6 @@ op_column_restart:
       pCrsr = pC->uc.pCursor;
       if (pC->deferredMoveto) {
         u32 iMap;
-        assert(!pC->isEphemeral);
         if (pC->ub.aAltMap && (iMap = pC->ub.aAltMap[1 + p2]) > 0) {
           pC = pC->pAltCursor;
           p2 = iMap - 1;
@@ -232,13 +232,8 @@ op_column_restart:
         rc = sqlite3VdbeHandleMovedCursor(pC);
         goto op_column_restart;
       }
-      assert(pC->eCurType == CURTYPE_BTREE);
-      assert(pCrsr);
-      assert(sqlite3BtreeCursorIsValid(pCrsr));
       pC->payloadSize = sqlite3BtreePayloadSize(pCrsr);
       pC->aRow = (const u8 *)sqlite3BtreePayloadFetch(pCrsr, &pC->szRow);
-      assert(pC->szRow <= pC->payloadSize);
-      assert(pC->szRow <= 65536); /* Maximum page size is 64KiB */
     }
     pC->cacheStatus = p->cacheCtr;
     if ((aOffset[0] = pC->aRow[0]) < 0x80) {
@@ -287,15 +282,15 @@ op_column_restart:
       testcase(aOffset[0] == 0);
       goto op_column_read_header;
     }
-  } else if (sqlite3BtreeCursorHasMoved(pC->uc.pCursor)) {
-    rc = sqlite3VdbeHandleMovedCursor(pC);
-    goto op_column_restart;
   }
 
   /* Make sure at least the first p2+1 entries of the header have been
   ** parsed and valid information is in aOffset[] and pC->aType[].
   */
   if (pC->nHdrParsed <= p2) {
+    // 2nd branch: pC->nHdrParsed <= p2
+    p->traces[(int) (pOp - p->aOp)][2]++;
+
     /* If there is more header available for parsing in the record, try
     ** to extract additional fields up through the p2+1-th field
     */
@@ -367,6 +362,8 @@ op_column_restart:
       return rc;
     }
   } else {
+    // branch 3: pC->nHdrParsed > p2
+    p->traces[(int) (pOp - p->aOp)][3]++;
     t = pC->aType[p2];
   }
 
@@ -374,65 +371,39 @@ op_column_restart:
   ** reach this point if aOffset[p2], aOffset[p2+1], and pC->aType[p2] are
   ** all valid.
   */
-  assert(p2 < pC->nHdrParsed);
-  assert(rc == SQLITE_OK);
   pDest = &aMem[pOp->p3];
-  assert(sqlite3VdbeCheckMemInvariants(pDest));
   if (VdbeMemDynamic(pDest)) {
     sqlite3VdbeMemSetNull(pDest);
   }
-  assert(t == pC->aType[p2]);
-  if (pC->szRow >= aOffset[p2 + 1]) {
-    /* This is the common case where the desired content fits on the original
-    ** page - where the content is not on an overflow page */
-    zData = pC->aRow + aOffset[p2];
-    if (t < 12) {
-      sqlite3VdbeSerialGet(zData, t, pDest);
-    } else {
-      /* If the column value is a string, we need a persistent value, not
-      ** a MEM_Ephem value.  This branch is a fast short-cut that is equivalent
-      ** to calling sqlite3VdbeSerialGet() and sqlite3VdbeDeephemeralize().
-      */
-      static const u16 aFlag[] = {MEM_Blob, MEM_Str | MEM_Term};
-      pDest->n = len = (t - 12) / 2;
-      pDest->enc = encoding;
-      if (pDest->szMalloc < len + 2) {
-        pDest->flags = MEM_Null;
-        sqlite3VdbeMemGrow(pDest, len + 2, 0);
-      } else {
-        pDest->z = pDest->zMalloc;
-      }
-      memcpy(pDest->z, zData, len);
-      pDest->z[len] = 0;
-      pDest->z[len + 1] = 0;
-      pDest->flags = aFlag[t & 1];
-    }
+
+  // branch 4: pC->szRow >= aOffset[p2 + 1]
+  p->traces[(int) (pOp - p->aOp)][4]++;
+
+  /* This is the common case where the desired content fits on the original
+  ** page - where the content is not on an overflow page */
+  zData = pC->aRow + aOffset[p2];
+  if (t < 12) {
+    sqlite3VdbeSerialGet(zData, t, pDest);
   } else {
+    /* If the column value is a string, we need a persistent value, not
+    ** a MEM_Ephem value.  This branch is a fast short-cut that is equivalent
+    ** to calling sqlite3VdbeSerialGet() and sqlite3VdbeDeephemeralize().
+    */
+    static const u16 aFlag[] = {MEM_Blob, MEM_Str | MEM_Term};
+    pDest->n = len = (t - 12) / 2;
     pDest->enc = encoding;
-    /* This branch happens only when content is on overflow pages */
-    if (((pOp->p5 & (OPFLAG_LENGTHARG | OPFLAG_TYPEOFARG)) != 0 &&
-         ((t >= 12 && (t & 1) == 0) || (pOp->p5 & OPFLAG_TYPEOFARG) != 0)) ||
-        (len = sqlite3VdbeSerialTypeLen(t)) == 0) {
-      /* Content is irrelevant for
-      **    1. the typeof() function,
-      **    2. the length(X) function if X is a blob, and
-      **    3. if the content length is zero.
-      ** So we might as well use bogus content rather than reading
-      ** content from disk.
-      **
-      ** Although sqlite3VdbeSerialGet() may read at most 8 bytes from the
-      ** buffer passed to it, debugging function VdbeMemPrettyPrint() may
-      ** read more.  Use the global constant sqlite3CtypeMap[] as the array,
-      ** as that array is 256 bytes long (plenty for VdbeMemPrettyPrint())
-      ** and it begins with a bunch of zeros.
-      */
-      sqlite3VdbeSerialGet((u8 *)sqlite3CtypeMap, t, pDest);
+    if (pDest->szMalloc < len + 2) {
+      pDest->flags = MEM_Null;
+      sqlite3VdbeMemGrow(pDest, len + 2, 0);
     } else {
-      rc = sqlite3VdbeMemFromBtree(pC->uc.pCursor, aOffset[p2], len, pDest);
-      sqlite3VdbeSerialGet((const u8 *)pDest->z, t, pDest);
-      pDest->flags &= ~MEM_Ephem;
+      pDest->z = pDest->zMalloc;
     }
+    memcpy(pDest->z, zData, len);
+    pDest->z[len] = 0;
+    pDest->z[len + 1] = 0;
+    pDest->flags = aFlag[t & 1];
   }
+
   return rc;
 }
 

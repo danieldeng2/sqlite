@@ -65,6 +65,15 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       // }
       // cg.i32.const_(100000 + i);
       // cg.drop();
+    
+      if (pOp->opcode == OP_Column) {
+        printf("Line %d: ", (int)(pOp - p->aOp));
+        for (int i = 0; i < 10; i++) {
+          printf("%lld ", p->traces[(int)(pOp - p->aOp)][i]);
+        }
+        printf("\n");
+      }
+
       switch (pOp->opcode) {
         case OP_Noop:
           break;
@@ -269,6 +278,15 @@ extern "C" {
 struct WasmModule {
   std::vector<uint8_t> data;
 };
+
+void traceStatement(Vdbe *p){
+  for (int i = 0; i < 100; i++){
+    for (int j = 0; j < 20; j++)
+    {
+      p->traces[i][j] = 0;
+    }
+  }
+}
 
 WasmModule *jitStatement(Vdbe *p) {
   std::vector<uint8_t> result = genProgram(p);

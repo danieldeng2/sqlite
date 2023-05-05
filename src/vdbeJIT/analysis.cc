@@ -8,7 +8,8 @@ std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
     isJumpIn[i] = false;
   }
 
-  bool hasOpReturn = false;
+  // bool hasOpReturn = false;
+  bool hasOpReturn = true;
 
   for (int i = 0; i < p->nOp; i++) {
     Op pOp = p->aOp[i];
