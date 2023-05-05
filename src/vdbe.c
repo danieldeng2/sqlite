@@ -710,7 +710,7 @@ static const char *vdbeMemTypeName(Mem *pMem){
 ** Execute as much of a VDBE program as we can.
 ** This is the core of sqlite3_step().  
 */
-__attribute__((optnone)) 
+// __attribute__((optnone)) 
 int sqlite3VdbeExec(
   Vdbe *p                    /* The VDBE */
 ){
@@ -1015,6 +1015,10 @@ case OP_Return: {           /* in1 */
   pIn1 = &aMem[pOp->p1];
   if( pIn1->flags & MEM_Int ){
     if( pOp->p3 ){ VdbeBranchTaken(1, 2); }
+
+    // Trace return destinations
+    p->traces[(int) (pOp - p->aOp)][pIn1->u.i]++;
+
     pOp = &aOp[pIn1->u.i];
   }else if( ALWAYS(pOp->p3) ){
     VdbeBranchTaken(0, 2);

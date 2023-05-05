@@ -66,10 +66,18 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       // cg.i32.const_(100000 + i);
       // cg.drop();
     
-      if (pOp->opcode == OP_Column) {
-        printf("Line %d: ", (int)(pOp - p->aOp));
-        for (int i = 0; i < 10; i++) {
-          printf("%lld ", p->traces[(int)(pOp - p->aOp)][i]);
+      // if (pOp->opcode == OP_Column) {
+      //   printf("OP_Column %d: ", (int)(pOp - p->aOp));
+      //   for (int i = 0; i < 10; i++) {
+      //     printf("%d ", p->traces[(int)(pOp - p->aOp)][i]);
+      //   }
+      //   printf("\n");
+      // }
+
+      if (pOp->opcode == OP_Return) {
+        printf("OP_Return %d: ", (int)(pOp - p->aOp));
+        for (int i = 0; i < 100; i++) {
+          if (p->traces[(int)(pOp - p->aOp)][i] != 0) printf("%d:%d ", i, p->traces[(int)(pOp - p->aOp)][i]);
         }
         printf("\n");
       }
