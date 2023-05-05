@@ -1,4 +1,5 @@
 #include "runtime.h"
+
 #include "inMemorySort.h"
 #include "time.h"
 
@@ -8,16 +9,22 @@ typedef int (*jitProgram)();
 
 // __attribute__((optnone))
 int sqlite3VdbeExecJIT(Vdbe *p) {
+  int rc;
+
   if (p->jitCode == NULL) {
-    return sqlite3VdbeExec(p);
+    do {
+      rc = sqlite3VdbeExec(p);
+    } while (rc == 2000);
+
+    return rc;
   }
 
-  int rc = ((jitProgram)p->jitCode)();
-
-  if (rc > 100000) {
-    printf("TODO: Implement OP %d\n", rc - 100000);
-    rc = sqlite3VdbeExec(p);
-  }
+  do {
+    rc = ((jitProgram)p->jitCode)();
+    if (rc > 100000) printf("TODO: Implement OP %d\n", rc - 100000);
+    if (rc > 1000) rc = sqlite3VdbeExec(p);
+  } while (rc > 1000);
+  
   return rc;
 }
 
@@ -202,7 +209,7 @@ op_column_restart:
 
   if (pC->cacheStatus != p->cacheCtr) { /*OPTIMIZATION-IF-FALSE*/
     // branch 0: pC->cacheStatus != p->cacheCtr
-    p->traces[(int) (pOp - p->aOp)][0]++;
+    p->traces[(int)(pOp - p->aOp)][0]++;
 
     if (pC->nullRow) {
       if (pC->eCurType == CURTYPE_PSEUDO && pC->seekResult > 0) {
@@ -289,7 +296,7 @@ op_column_restart:
   */
   if (pC->nHdrParsed <= p2) {
     // 2nd branch: pC->nHdrParsed <= p2
-    p->traces[(int) (pOp - p->aOp)][2]++;
+    p->traces[(int)(pOp - p->aOp)][2]++;
 
     /* If there is more header available for parsing in the record, try
     ** to extract additional fields up through the p2+1-th field
@@ -363,7 +370,7 @@ op_column_restart:
     }
   } else {
     // branch 3: pC->nHdrParsed > p2
-    p->traces[(int) (pOp - p->aOp)][3]++;
+    p->traces[(int)(pOp - p->aOp)][3]++;
     t = pC->aType[p2];
   }
 
@@ -377,7 +384,7 @@ op_column_restart:
   }
 
   // branch 4: pC->szRow >= aOffset[p2 + 1]
-  p->traces[(int) (pOp - p->aOp)][4]++;
+  p->traces[(int)(pOp - p->aOp)][4]++;
 
   /* This is the common case where the desired content fits on the original
   ** page - where the content is not on an overflow page */
@@ -462,7 +469,6 @@ void execAggrStepOne(Vdbe *p, Op *pOp) {
   assert(pOp->p4type == P4_FUNCCTX);
   pCtx = pOp->p4.pCtx;
   pMem = &p->aMem[pOp->p3];
-
 
   /* If this function is inside of a trigger, the register array in aMem[]
   ** might change from one evaluation to the next.  The next block of code

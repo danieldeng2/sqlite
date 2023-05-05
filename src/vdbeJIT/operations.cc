@@ -2,10 +2,23 @@
 
 #include <stddef.h>
 
-#include "runtime.h"
 #include "inMemorySort.h"
+#include "runtime.h"
 
 #define CURSOR_VALID 0
+
+static inline void genGuard(wasmblr::CodeGenerator &cg, Vdbe *p,
+                            int startIndex) {
+  cg.if_(cg.void_);
+  {
+    cg.i32.const_((int32_t)&p->pc);
+    cg.i32.const_(startIndex);
+    cg.i32.store(2U, 0U);
+    cg.i32.const_(2000);
+    cg.return_();
+  }
+  cg.end();
+}
 
 static void genBranchTo(wasmblr::CodeGenerator &cg, Vdbe *p,
                         std::vector<uint32_t> &branchTable, int from, int to,
@@ -155,26 +168,13 @@ void genOpNull(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 
 void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                std::vector<uint32_t> &branchTable, int currPos) {
-  // assuming no pFrame
-
   // dynamic parameters
   cg.i32.const_((intptr_t)&pOp->p1);
   cg.i32.load();
   cg.i32.const_((intptr_t)&p->aOp[0].p1);
   cg.i32.load();
   cg.i32.sub();
-
-  // if not equal
-  cg.if_(cg.void_);
-  {
-    cg.i32.const_((intptr_t)&pOp->p1);
-    cg.i32.const_((intptr_t)&p->aOp[0].p1);
-    cg.i32.load();
-    cg.i32.store();
-  }
-  cg.else_();
-  { genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1); }
-  cg.end();
+  genGuard(cg, p, pOp - p->aOp);
 }
 
 void genOpReadOpWrite(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {

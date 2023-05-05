@@ -67,15 +67,15 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       // cg.drop();
     
       // if (pOp->opcode == OP_Column) {
-      //   printf("OP_Column %d: ", (int)(pOp - p->aOp));
+      //   printf("OP_ %d: ", (int)(pOp - p->aOp));
       //   for (int i = 0; i < 10; i++) {
       //     printf("%d ", p->traces[(int)(pOp - p->aOp)][i]);
       //   }
       //   printf("\n");
       // }
 
-      if (pOp->opcode == OP_Return) {
-        printf("OP_Return %d: ", (int)(pOp - p->aOp));
+      if (pOp->opcode == OP_Add || pOp->opcode == OP_Multiply || pOp->opcode == OP_Subtract) {
+        printf("Arithmatic %d: ", (int)(pOp - p->aOp));
         for (int i = 0; i < 100; i++) {
           if (p->traces[(int)(pOp - p->aOp)][i] != 0) printf("%d:%d ", i, p->traces[(int)(pOp - p->aOp)][i]);
         }
@@ -131,6 +131,8 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
           break;
         case OP_Once:
           genOpOnce(cg, p, pOp, branchTable, i);
+          // skip generating instructions
+          i = pOp->p2 - 1;
           break;
         case OP_OpenRead:
         case OP_OpenWrite:
