@@ -7,12 +7,12 @@
 
 #define CURSOR_VALID 0
 
-static inline void genGuard(wasmblr::CodeGenerator &cg, Vdbe *p,
-                            int startIndex) {
+static inline void genGuard(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  cg.i32.eqz();
   cg.if_(cg.void_);
   {
     cg.i32.const_((int32_t)&p->pc);
-    cg.i32.const_(startIndex);
+    cg.i32.const_(pOp - p->aOp);
     cg.i32.store(2U, 0U);
     cg.i32.const_(2000);
     cg.return_();
@@ -168,13 +168,37 @@ void genOpNull(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 
 void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                std::vector<uint32_t> &branchTable, int currPos) {
+    // assuming no pFrame
+
   // dynamic parameters
-  cg.i32.const_((intptr_t)&pOp->p1);
-  cg.i32.load();
-  cg.i32.const_((intptr_t)&p->aOp[0].p1);
-  cg.i32.load();
-  cg.i32.sub();
-  genGuard(cg, p, pOp - p->aOp);
+  // cg.i32.const_((intptr_t)&pOp->p1);
+  // cg.i32.load();
+  // cg.i32.const_((intptr_t)&p->aOp[0].p1);
+  // cg.i32.load();
+  // cg.i32.sub();
+
+  // // if not equal
+  // cg.if_(cg.void_);
+  // {
+  //   cg.i32.const_((intptr_t)&pOp->p1);
+  //   cg.i32.const_((intptr_t)&p->aOp[0].p1);
+  //   cg.i32.load();
+  //   cg.i32.store();
+  // }
+  // cg.else_();
+  // { genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1); }
+  // cg.end();
+
+  // dynamic parameters
+  // cg.i32.const_((intptr_t)&pOp->p1);
+  // cg.i32.load();
+  // cg.i32.const_((intptr_t)&p->aOp[0].p1);
+  // cg.i32.load();
+  // cg.i32.eq();
+
+  cg.i32.const_(0);
+  genGuard(cg, p, pOp);
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0);
 }
 
 void genOpReadOpWrite(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
@@ -442,7 +466,104 @@ void genOpFunction(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.drop();
 }
 
+void genIntOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  cg.i32.const_((int)&p->aMem[pOp->p1]);
+  cg.i32.load16_u(0U, offsetof(Mem, flags));
+  cg.i32.const_((int)&p->aMem[pOp->p2]);
+  cg.i32.load16_u(0U, offsetof(Mem, flags));
+  cg.i32.and_();
+  cg.i32.const_(MEM_Int);
+  cg.i32.and_();
+  genGuard(cg, p, pOp);
+
+  cg.i32.const_((int)&p->aMem[pOp->p2]);
+  cg._i64.load(0U, offsetof(Mem, u));
+  cg.i32.const_((int)&p->aMem[pOp->p1]);
+  cg._i64.load(0U, offsetof(Mem, u));
+
+  switch (pOp->opcode) {
+    case OP_Add:
+      cg._i64.add();
+      break;
+    case OP_Subtract:
+      cg._i64.sub();
+      break;
+    case OP_Multiply:
+      cg._i64.mul();
+      break;
+  }
+  cg.i32.const_((int)&p->aMem[pOp->p3]);
+  cg._i64.store(0U, offsetof(Mem, u));
+
+
+  // pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
+  cg.i32.const_((int)&p->aMem[pOp->p3]);
+
+  cg.i32.const_((int)&p->aMem[pOp->p3]);
+  cg.i32.load16_u(0U, offsetof(Mem, flags));
+
+  cg.i32.const_(~(MEM_TypeMask | MEM_Zero));
+  cg.i32.and_();
+
+  cg.i32.const_(MEM_Int);
+  cg.i32.or_();
+
+  cg.i32.store16(0U, offsetof(Mem, flags));
+}
+
+void genRealOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  cg.i32.const_((int)&p->aMem[pOp->p1]);
+  cg.i32.load16_u(0U, offsetof(Mem, flags));
+  cg.i32.const_((int)&p->aMem[pOp->p2]);
+  cg.i32.load16_u(0U, offsetof(Mem, flags));
+  cg.i32.and_();
+  cg.i32.const_(MEM_Real);
+  cg.i32.and_();
+  genGuard(cg, p, pOp);
+
+  cg.i32.const_((int)&p->aMem[pOp->p2]);
+  cg.f64.load(0U, offsetof(Mem, u));
+  cg.i32.const_((int)&p->aMem[pOp->p1]);
+  cg.f64.load(0U, offsetof(Mem, u));
+
+  switch (pOp->opcode) {
+    case OP_Add:
+      cg.f64.add();
+      break;
+    case OP_Subtract:
+      cg.f64.sub();
+      break;
+    case OP_Multiply:
+      cg.f64.mul();
+      break;
+  }
+  cg.i32.const_((int)&p->aMem[pOp->p3]);
+  cg.f64.store(0U, offsetof(Mem, u));
+
+
+  // pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
+  cg.i32.const_((int)&p->aMem[pOp->p3]);
+
+  cg.i32.const_((int)&p->aMem[pOp->p3]);
+  cg.i32.load16_u(0U, offsetof(Mem, flags));
+
+  cg.i32.const_(~(MEM_TypeMask | MEM_Zero));
+  cg.i32.and_();
+
+  cg.i32.const_(MEM_Real);
+  cg.i32.or_();
+
+  cg.i32.store16(0U, offsetof(Mem, flags));
+}
+
 void genMathOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+
+  // if (p->traces[(int) (pOp - p->aOp)][1] > p->traces[(int) (pOp - p->aOp)][0]){
+  //   genRealOps(cg, p, pOp);
+  // } else {
+  //   genIntOps(cg, p, pOp);
+  // }
+
   cg.i32.const_((int)&p->aMem[pOp->p1]);
   cg.i32.const_((int)&p->aMem[pOp->p2]);
   cg.i32.const_((int)&p->aMem[pOp->p3]);

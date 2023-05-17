@@ -7,7 +7,7 @@
 
 typedef int (*jitProgram)();
 
-// __attribute__((optnone))
+__attribute__((optnone))
 int sqlite3VdbeExecJIT(Vdbe *p) {
   int rc;
 

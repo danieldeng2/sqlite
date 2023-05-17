@@ -132,7 +132,7 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_Once:
           genOpOnce(cg, p, pOp, branchTable, i);
           // skip generating instructions
-          i = pOp->p2 - 1;
+          // i = pOp->p2 - 1;
           break;
         case OP_OpenRead:
         case OP_OpenWrite:
@@ -296,6 +296,7 @@ void traceStatement(Vdbe *p){
       p->traces[i][j] = 0;
     }
   }
+  p->isTracing = true;
 }
 
 WasmModule *jitStatement(Vdbe *p) {

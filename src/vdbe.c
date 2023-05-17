@@ -710,7 +710,7 @@ static const char *vdbeMemTypeName(Mem *pMem){
 ** Execute as much of a VDBE program as we can.
 ** This is the core of sqlite3_step().  
 */
-// __attribute__((optnone)) 
+__attribute__((optnone)) 
 int sqlite3VdbeExec(
   Vdbe *p                    /* The VDBE */
 ){
@@ -938,9 +938,9 @@ case OP_Goto: {             /* jump */
 #endif
 
 jump_to_p2_and_check_for_interrupt:
-  // pOp = &aOp[pOp->p2 - 1];
-  p->pc = pOp->p2;
-  return 2000;
+  pOp = &aOp[pOp->p2 - 1];
+  // p->pc = pOp->p2;
+  // return 2000;
 
   /* Opcodes that are used as the bottom of a loop (OP_Next, OP_Prev,
   ** OP_VNext, or OP_SorterNext) all jump here upon
@@ -1019,7 +1019,7 @@ case OP_Return: {           /* in1 */
     if( pOp->p3 ){ VdbeBranchTaken(1, 2); }
 
     // Trace return destinations
-    p->traces[(int) (pOp - p->aOp)][pIn1->u.i]++;
+    if (p->isTracing) if (p->isTracing) p->traces[(int) (pOp - p->aOp)][pIn1->u.i]++;
 
     pOp = &aOp[pIn1->u.i];
   }else if( ALWAYS(pOp->p3) ){
@@ -1752,13 +1752,14 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   pIn2 = &aMem[pOp->p2];
   type2 = pIn2->flags;
   pOut = &aMem[pOp->p3];
+
   if( (type1 & type2 & MEM_Int)!=0 ){
 int_math:
     iA = pIn1->u.i;
     iB = pIn2->u.i;
 
     // zeroth branch: both values are integers
-    p->traces[(int) (pOp - p->aOp)][0]++;
+    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][0]++;
 
     switch( pOp->opcode ){
       case OP_Add:       if( sqlite3AddInt64(&iB,iA) ) goto fp_math;  break;
@@ -1783,8 +1784,7 @@ int_math:
     goto arithmetic_result_is_null;
   }else{
     // first branch: real values are used
-    p->traces[(int) (pOp - p->aOp)][1]++;
-
+    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][1]++;
 
     type1 = numericType(pIn1);
     type2 = numericType(pIn2);
@@ -2843,7 +2843,7 @@ op_column_restart:
 
   if( pC->cacheStatus!=p->cacheCtr ){                /*OPTIMIZATION-IF-FALSE*/
     // branch 0: pC->cacheStatus != p->cacheCtr
-    p->traces[(int) (pOp - p->aOp)][0]++;
+    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][0]++;
 
     if( pC->nullRow ){
       if( pC->eCurType==CURTYPE_PSEUDO && pC->seekResult>0 ){
@@ -2938,7 +2938,7 @@ op_column_restart:
   */
   if( pC->nHdrParsed<=p2 ){
     // 2nd branch: pC->nHdrParsed <= p2
-    p->traces[(int) (pOp - p->aOp)][2]++;
+    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][2]++;
 
     /* If there is more header available for parsing in the record, try
     ** to extract additional fields up through the p2+1-th field 
@@ -3013,7 +3013,7 @@ op_column_restart:
     }
   }else{
     // 3nd branch: pC->nHdrParsed > p2
-    p->traces[(int) (pOp - p->aOp)][3]++;
+    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][3]++;
 
     t = pC->aType[p2];
   }
