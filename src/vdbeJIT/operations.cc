@@ -45,7 +45,10 @@ void genOpInit(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                std::vector<uint32_t> &branchTable, int currPos) {
   // For self altering instructions, treat the address as parameter
   cg.i32.const_((int)&pOp->p1);
+  cg.i32.const_((int)&pOp->p1);
+  cg.i32.load();
   cg.i32.const_(1);
+  cg.i32.add();
   cg.i32.store();
   genBranchTo(cg, p, branchTable, currPos, pOp->p2);
 }
