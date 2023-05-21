@@ -938,9 +938,8 @@ case OP_Goto: {             /* jump */
 #endif
 
 jump_to_p2_and_check_for_interrupt:
-  pOp = &aOp[pOp->p2 - 1];
-  // p->pc = pOp->p2;
-  // return 2000;
+  p->pc = pOp->p2;
+  return 2000;
 
   /* Opcodes that are used as the bottom of a loop (OP_Next, OP_Prev,
   ** OP_VNext, or OP_SorterNext) all jump here upon

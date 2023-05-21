@@ -171,23 +171,23 @@ void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
     // assuming no pFrame
 
   // dynamic parameters
-  // cg.i32.const_((intptr_t)&pOp->p1);
-  // cg.i32.load();
-  // cg.i32.const_((intptr_t)&p->aOp[0].p1);
-  // cg.i32.load();
-  // cg.i32.sub();
+  cg.i32.const_((intptr_t)&pOp->p1);
+  cg.i32.load();
+  cg.i32.const_((intptr_t)&p->aOp[0].p1);
+  cg.i32.load();
+  cg.i32.sub();
 
   // // if not equal
-  // cg.if_(cg.void_);
-  // {
-  //   cg.i32.const_((intptr_t)&pOp->p1);
-  //   cg.i32.const_((intptr_t)&p->aOp[0].p1);
-  //   cg.i32.load();
-  //   cg.i32.store();
-  // }
-  // cg.else_();
-  // { genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1); }
-  // cg.end();
+  cg.if_(cg.void_);
+  {
+    cg.i32.const_((intptr_t)&pOp->p1);
+    cg.i32.const_((intptr_t)&p->aOp[0].p1);
+    cg.i32.load();
+    cg.i32.store();
+  }
+  cg.else_();
+  { genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1); }
+  cg.end();
 
   // dynamic parameters
   // cg.i32.const_((intptr_t)&pOp->p1);
@@ -196,9 +196,9 @@ void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   // cg.i32.load();
   // cg.i32.eq();
 
-  cg.i32.const_(0);
-  genGuard(cg, p, pOp);
-  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0);
+  // cg.i32.const_(0);
+  // genGuard(cg, p, pOp);
+  // genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0);
 }
 
 void genOpReadOpWrite(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
