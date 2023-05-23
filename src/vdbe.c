@@ -1783,7 +1783,7 @@ int_math:
     goto arithmetic_result_is_null;
   }else{
     // first branch: real values are used
-    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][1]++;
+    if (p->isTracing && (type1 & type2 & MEM_Real)) p->traces[(int) (pOp - p->aOp)][1]++;
 
     type1 = numericType(pIn1);
     type2 = numericType(pIn2);

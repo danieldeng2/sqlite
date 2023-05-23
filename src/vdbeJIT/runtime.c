@@ -7,10 +7,9 @@
 
 typedef int (*jitProgram)();
 
-__attribute__((optnone))
-int sqlite3VdbeExecJIT(Vdbe *p) {
+__attribute__((optnone)) int sqlite3VdbeExecJIT(Vdbe *p) {
   int rc;
-  
+
   if (p->jitCode == NULL) {
     do {
       rc = sqlite3VdbeExec(p);
@@ -22,51 +21,35 @@ int sqlite3VdbeExecJIT(Vdbe *p) {
   do {
     rc = ((jitProgram)p->jitCode)();
     if (rc > 100000) printf("TODO: Implement OP %d\n", rc - 100000);
+    if (rc > 1000) printf("break %d\n", p->pc);
     if (rc > 1000) rc = sqlite3VdbeExec(p);
   } while (rc > 1000);
-  
+
   return rc;
 }
 
 void execOpAdd(Mem *pIn1, Mem *pIn2, Mem *pOut) {
-  u16 flag;
-  if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
-    pOut->u.i = pIn1->u.i + pIn2->u.i;
-    flag = MEM_Int;
-  } else {
-    double p1 = (pIn1->flags & MEM_Real) ? pIn1->u.r : (double)pIn1->u.i;
-    double p2 = (pIn2->flags & MEM_Real) ? pIn2->u.r : (double)pIn2->u.i;
-    pOut->u.r = p2 + p1;
-    flag = MEM_Real;
-  }
-  pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
+  double p1 = (pIn1->flags & MEM_Real) ? pIn1->u.r : (double)pIn1->u.i;
+  double p2 = (pIn2->flags & MEM_Real) ? pIn2->u.r : (double)pIn2->u.i;
+  pOut->u.r = p2 + p1;
+
+  pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | MEM_Real;
 }
+
 void execOpSubtract(Mem *pIn1, Mem *pIn2, Mem *pOut) {
-  u16 flag;
-  if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
-    pOut->u.i = pIn2->u.i - pIn1->u.i;
-    flag = MEM_Int;
-  } else {
-    double p1 = (pIn1->flags & MEM_Real) ? pIn1->u.r : (double)pIn1->u.i;
-    double p2 = (pIn2->flags & MEM_Real) ? pIn2->u.r : (double)pIn2->u.i;
-    pOut->u.r = p2 - p1;
-    flag = MEM_Real;
-  }
-  pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
+  double p1 = (pIn1->flags & MEM_Real) ? pIn1->u.r : (double)pIn1->u.i;
+  double p2 = (pIn2->flags & MEM_Real) ? pIn2->u.r : (double)pIn2->u.i;
+  pOut->u.r = p2 - p1;
+
+  pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | MEM_Real;
 }
 
 void execOpMultiply(Mem *pIn1, Mem *pIn2, Mem *pOut) {
-  u16 flag;
-  if ((pIn1->flags & pIn2->flags & MEM_Int) != 0) {
-    pOut->u.i = pIn1->u.i * pIn2->u.i;
-    flag = MEM_Int;
-  } else {
-    double p1 = (pIn1->flags & MEM_Real) ? pIn1->u.r : (double)pIn1->u.i;
-    double p2 = (pIn2->flags & MEM_Real) ? pIn2->u.r : (double)pIn2->u.i;
-    pOut->u.r = p2 * p1;
-    flag = MEM_Real;
-  }
-  pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
+  double p1 = (pIn1->flags & MEM_Real) ? pIn1->u.r : (double)pIn1->u.i;
+  double p2 = (pIn2->flags & MEM_Real) ? pIn2->u.r : (double)pIn2->u.i;
+  pOut->u.r = p2 * p1;
+
+  pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | MEM_Real;
 }
 
 int execOpenReadWrite(Vdbe *p, Op *pOp) {

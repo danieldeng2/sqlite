@@ -303,6 +303,7 @@ void traceStatement(Vdbe *p){
 }
 
 WasmModule *jitStatement(Vdbe *p) {
+  p->isTracing = false;
   std::vector<uint8_t> result = genProgram(p);
   return new WasmModule{result};
 }

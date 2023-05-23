@@ -171,8 +171,7 @@ void genOpNull(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 
 void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                std::vector<uint32_t> &branchTable, int currPos) {
-    // assuming no pFrame
-
+  // assuming no pFrame
   // dynamic parameters
   cg.i32.const_((intptr_t)&pOp->p1);
   cg.i32.load();
@@ -192,14 +191,13 @@ void genOpOnce(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   { genBranchTo(cg, p, branchTable, currPos, pOp->p2, 1); }
   cg.end();
 
-  // dynamic parameters
+  // // dynamic parameters
   // cg.i32.const_((intptr_t)&pOp->p1);
   // cg.i32.load();
   // cg.i32.const_((intptr_t)&p->aOp[0].p1);
   // cg.i32.load();
   // cg.i32.eq();
 
-  // cg.i32.const_(0);
   // genGuard(cg, p, pOp);
   // genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0);
 }
@@ -479,6 +477,8 @@ void genIntOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.and_();
   genGuard(cg, p, pOp);
 
+  cg.i32.const_((int)&p->aMem[pOp->p3]);
+
   cg.i32.const_((int)&p->aMem[pOp->p2]);
   cg._i64.load(0U, offsetof(Mem, u));
   cg.i32.const_((int)&p->aMem[pOp->p1]);
@@ -495,7 +495,6 @@ void genIntOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
       cg._i64.mul();
       break;
   }
-  cg.i32.const_((int)&p->aMem[pOp->p3]);
   cg._i64.store(0U, offsetof(Mem, u));
 
 
@@ -524,6 +523,8 @@ void genRealOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.and_();
   genGuard(cg, p, pOp);
 
+  cg.i32.const_((int)&p->aMem[pOp->p3]);
+
   cg.i32.const_((int)&p->aMem[pOp->p2]);
   cg.f64.load(0U, offsetof(Mem, u));
   cg.i32.const_((int)&p->aMem[pOp->p1]);
@@ -540,7 +541,6 @@ void genRealOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
       cg.f64.mul();
       break;
   }
-  cg.i32.const_((int)&p->aMem[pOp->p3]);
   cg.f64.store(0U, offsetof(Mem, u));
 
 
@@ -559,13 +559,31 @@ void genRealOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.store16(0U, offsetof(Mem, flags));
 }
 
-void genMathOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+static int mostTraced(Vdbe *p, Op *pOp){
+  int mostUsed = -1;
+  int mostUsedValue = 0;
 
-  // if (p->traces[(int) (pOp - p->aOp)][1] > p->traces[(int) (pOp - p->aOp)][0]){
-  //   genRealOps(cg, p, pOp);
-  // } else {
-  //   genIntOps(cg, p, pOp);
-  // }
+  for (int i = 0; i < 100; i++){
+    if (p->traces[(int) (pOp - p->aOp)][i] > mostUsedValue){
+      mostUsed = i;
+      mostUsedValue = p->traces[(int) (pOp - p->aOp)][i];
+    }
+  }
+  return mostUsed;
+}
+
+void genMathOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  int mostUsed = mostTraced(p, pOp);
+
+  if (mostUsed == 1) {
+    genRealOps(cg, p, pOp);
+    return;
+  }
+
+  if (mostUsed == 0) {
+    genIntOps(cg, p, pOp);
+    return;
+  }
 
   cg.i32.const_((int)&p->aMem[pOp->p1]);
   cg.i32.const_((int)&p->aMem[pOp->p2]);
@@ -584,6 +602,7 @@ void genMathOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   }
 
   cg.call_indirect({cg.i32, cg.i32, cg.i32}, {});
+
 }
 
 void genMakeRecord(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
