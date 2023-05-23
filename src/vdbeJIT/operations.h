@@ -79,6 +79,8 @@ void genOpRowid(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
 void genOpAffinity(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
 
+void genOpRealAffinity(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp);
+
 void genSeekComparisons(wasmblr::CodeGenerator& cg, Vdbe* p, Op* pOp,
                         std::vector<uint32_t>& branchTable, int currPos);
 
