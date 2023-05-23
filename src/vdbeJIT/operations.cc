@@ -884,6 +884,34 @@ void genOpAffinity(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.call_indirect({cg.i32, cg.i32}, {});
 }
 
+void genOpRealAffinity(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
+  Mem *pIn1 = &p->aMem[pOp->p1];
+
+  cg.i32.const_((intptr_t) &pIn1->flags);
+  cg.i32.load16_u();
+  cg.i32.const_(MEM_Int|MEM_IntReal);
+  cg.i32.and_();
+
+  cg.if_(cg.void_); {
+    cg.i32.const_((intptr_t) &pIn1->u.r);
+    cg.i32.const_((intptr_t) &pIn1->u.i);
+    cg._i64.load();
+    cg.f64.convert_i64_s();
+    cg.f64.store();
+
+    // MemSetTypeFlag(pMem, MEM_Real);
+    cg.i32.const_((intptr_t) &pIn1->flags);
+    cg.i32.const_((intptr_t) &pIn1->flags);
+    cg.i32.load16_u();
+    cg.i32.const_(~(MEM_TypeMask|MEM_Zero));
+    cg.i32.and_();
+    cg.i32.const_(MEM_Real);
+    cg.i32.or_();
+    cg.i32.store16();
+  }
+  cg.end();
+}
+
 void genSeekComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                         std::vector<uint32_t> &branchTable, int currPos) {
   cg.i32.const_((intptr_t)p);

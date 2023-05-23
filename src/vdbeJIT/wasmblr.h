@@ -98,9 +98,8 @@ class I64 {
   void add();
   void sub();
   void mul();
-  void load(uint32_t alignment = 1, uint32_t offset = 0);
-  void store(uint32_t alignment = 1, uint32_t offset = 0);
-
+  void store(uint32_t alignment = 3, uint32_t offset = 0);
+  void load(uint32_t alignment = 3, uint32_t offset = 0);
  private:
   I64(CodeGenerator& cg_) : cg(cg_) {}
   CodeGenerator& cg;
@@ -151,6 +150,7 @@ class F64 {
   void const_(double f);
   void load(uint32_t alignment = 1, uint32_t offset = 0);
   void store(uint32_t alignment = 1, uint32_t offset = 0);
+  void convert_i64_s();
 
  private:
   F64(CodeGenerator& cg_) : cg(cg_) {}
@@ -672,6 +672,7 @@ BINARY_OP(F64, ne, 0x62, f64, f64, i32);
 BINARY_OP(F64, add, 0xa0, f64, f64, f64);
 BINARY_OP(F64, sub, 0xa1, f64, f64, f64);
 BINARY_OP(F64, mul, 0xa2, f64, f64, f64);
+UNARY_OP(F64, convert_i64_s, 0xb9, _i64, f64);
 
 #undef UNARY_OP
 #undef BINARY_OP

@@ -246,6 +246,9 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
         case OP_OpenEphemeral:
           genOpenEphemeral(cg, p, pOp);
           break;
+        case OP_RealAffinity:
+          genOpRealAffinity(cg, p, pOp);
+          break;
         case OP_SeekLT:
         case OP_SeekLE:
         case OP_SeekGT:
