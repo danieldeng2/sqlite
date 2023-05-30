@@ -4315,6 +4315,8 @@ static void vdbeAssertFieldCountWithinLimits(
 ** or positive value if *pMem1 is less than, equal to or greater than 
 ** *pMem2, respectively. Similar in spirit to "rc = (*pMem1) - (*pMem2);".
 */
+
+__attribute__((optnone)) 
 static int vdbeCompareMemString(
   const Mem *pMem1,
   const Mem *pMem2,

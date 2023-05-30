@@ -401,6 +401,29 @@ static void genComparisonOpCode(wasmblr::CodeGenerator &cg, int opcode) {
   }
 }
 
+static void genRealComparisonOpCode(wasmblr::CodeGenerator &cg, int opcode) {
+  switch (opcode) {
+    case OP_Eq:
+      cg.f64.eq();
+      break;
+    case OP_Ne:
+      cg.f64.ne();
+      break;
+    case OP_Lt:
+      cg.f64.lt();
+      break;
+    case OP_Le:
+      cg.f64.le();
+      break;
+    case OP_Gt:
+      cg.f64.gt();
+      break;
+    case OP_Ge:
+      cg.f64.ge();
+      break;
+  }
+}
+
 void genIntComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
                        std::vector<uint32_t> &branchTable, int currPos) {
   Mem *pIn1 = &p->aMem[pOp->p1];
@@ -421,6 +444,29 @@ void genIntComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   cg.i32.const_((intptr_t)&pIn1->u.i);
   cg.i32.load();
   genComparisonOpCode(cg, pOp->opcode);
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
+}
+
+void genRealComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                       std::vector<uint32_t> &branchTable, int currPos) {
+  Mem *pIn1 = &p->aMem[pOp->p1];
+  Mem *pIn3 = &p->aMem[pOp->p3];
+
+  // pIn1->flags & pIn3->flags & MEM_Real
+  cg.i32.const_((intptr_t)&pIn1->flags);
+  cg.i32.load16_u();
+  cg.i32.const_((intptr_t)&pIn3->flags);
+  cg.i32.load16_u();
+  cg.i32.and_();
+  cg.i32.const_(MEM_Int);
+  cg.i32.and_();
+  genGuard(cg, p, pOp);
+
+  cg.f64.const_((intptr_t)&pIn3->u.r);
+  cg.f64.load();
+  cg.f64.const_((intptr_t)&pIn1->u.r);
+  cg.f64.load();
+  genRealComparisonOpCode(cg, pOp->opcode);
   genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
 }
 

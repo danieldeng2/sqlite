@@ -143,7 +143,12 @@ class F32 {
 class F64 {
  public:
   operator uint8_t();
+  void eq();
   void ne();
+  void lt();
+  void gt();
+  void le();
+  void ge();
   void add();
   void sub();
   void mul();
@@ -668,7 +673,13 @@ STORE_OP(F32, store, 0x38);
 
 LOAD_OP(F64, load, 0x2b, f64);
 STORE_OP(F64, store, 0x39);
+BINARY_OP(F64, eq, 0x61, f64, f64, i32);
 BINARY_OP(F64, ne, 0x62, f64, f64, i32);
+BINARY_OP(F64, lt, 0x63, f64, f64, i32);
+BINARY_OP(F64, gt, 0x64, f64, f64, i32);
+BINARY_OP(F64, le, 0x65, f64, f64, i32);
+BINARY_OP(F64, ge, 0x66, f64, f64, i32);
+
 BINARY_OP(F64, add, 0xa0, f64, f64, f64);
 BINARY_OP(F64, sub, 0xa1, f64, f64, f64);
 BINARY_OP(F64, mul, 0xa2, f64, f64, f64);
