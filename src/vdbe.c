@@ -1018,7 +1018,7 @@ case OP_Return: {           /* in1 */
     if( pOp->p3 ){ VdbeBranchTaken(1, 2); }
 
     // Trace return destinations
-    if (p->isTracing) if (p->isTracing) p->traces[(int) (pOp - p->aOp)][pIn1->u.i]++;
+    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][pIn1->u.i]++;
 
     pOp = &aOp[pIn1->u.i];
   }else if( ALWAYS(pOp->p3) ){
@@ -2140,6 +2140,9 @@ case OP_Ge: {             /* same as TK_GE, jump, in1, in3 */
   flags1 = pIn1->flags;
   flags3 = pIn3->flags;
   if( (flags1 & flags3 & MEM_Int)!=0 ){
+    // 0th branch: integer comparison
+    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][0]++;
+
     /* Common case of comparison of two integers */
     if( pIn3->u.i > pIn1->u.i ){
       if( sqlite3aGTb[pOp->opcode] ){
@@ -2231,6 +2234,8 @@ case OP_Ge: {             /* same as TK_GE, jump, in1, in3 */
       }
     }
     assert( pOp->p4type==P4_COLLSEQ || pOp->p4.pColl==0 );
+    // 1st branch: other comparisons
+    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][1]++;
     res = sqlite3MemCompare(pIn3, pIn1, pOp->p4.pColl);
   }
 

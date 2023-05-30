@@ -20,6 +20,19 @@ static inline void genGuard(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.end();
 }
 
+static int mostTraced(Vdbe *p, Op *pOp) {
+  int mostUsed = -1;
+  int mostUsedValue = 0;
+
+  for (int i = 0; i < 100; i++) {
+    if (p->traces[(int)(pOp - p->aOp)][i] > mostUsedValue) {
+      mostUsed = i;
+      mostUsedValue = p->traces[(int)(pOp - p->aOp)][i];
+    }
+  }
+  return mostUsed;
+}
+
 static void genBranchTo(wasmblr::CodeGenerator &cg, Vdbe *p,
                         std::vector<uint32_t> &branchTable, int from, int to,
                         int offset = 0, bool brif = false) {
@@ -388,8 +401,8 @@ static void genComparisonOpCode(wasmblr::CodeGenerator &cg, int opcode) {
   }
 }
 
-void genComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
-                    std::vector<uint32_t> &branchTable, int currPos) {
+void genIntComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                       std::vector<uint32_t> &branchTable, int currPos) {
   Mem *pIn1 = &p->aMem[pOp->p1];
   Mem *pIn3 = &p->aMem[pOp->p3];
 
@@ -401,26 +414,34 @@ void genComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
   cg.i32.and_();
   cg.i32.const_(MEM_Int);
   cg.i32.and_();
+  genGuard(cg, p, pOp);
 
-  cg.if_(cg.i32);
-  {
-    cg.i32.const_((intptr_t)&pIn3->u.i);
-    cg.i32.load();
-    cg.i32.const_((intptr_t)&pIn1->u.i);
-    cg.i32.load();
-    genComparisonOpCode(cg, pOp->opcode);
+  cg.i32.const_((intptr_t)&pIn3->u.i);
+  cg.i32.load();
+  cg.i32.const_((intptr_t)&pIn1->u.i);
+  cg.i32.load();
+  genComparisonOpCode(cg, pOp->opcode);
+  genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
+}
+
+void genComparisons(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp,
+                    std::vector<uint32_t> &branchTable, int currPos) {
+  int mostUsed = mostTraced(p, pOp);
+  if (mostUsed == 0) {
+    genIntComparisons(cg, p, pOp, branchTable, currPos);
+    return;
   }
-  cg.else_();
-  {
-    cg.i32.const_((intptr_t)pIn3);
-    cg.i32.const_((intptr_t)pIn1);
-    cg.i32.const_((intptr_t)pOp->p4.pColl);
-    cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3MemCompare));
-    cg.call_indirect({cg.i32, cg.i32, cg.i32}, {cg.i32});
-    cg.i32.const_(0);
-    genComparisonOpCode(cg, pOp->opcode);
-  }
-  cg.end();
+
+  Mem *pIn1 = &p->aMem[pOp->p1];
+  Mem *pIn3 = &p->aMem[pOp->p3];
+
+  cg.i32.const_((intptr_t)pIn3);
+  cg.i32.const_((intptr_t)pIn1);
+  cg.i32.const_((intptr_t)pOp->p4.pColl);
+  cg.i32.const_(reinterpret_cast<intptr_t>(&sqlite3MemCompare));
+  cg.call_indirect({cg.i32, cg.i32, cg.i32}, {cg.i32});
+  cg.i32.const_(0);
+  genComparisonOpCode(cg, pOp->opcode);
 
   genBranchTo(cg, p, branchTable, currPos, pOp->p2, 0, true);
 }
@@ -497,7 +518,6 @@ void genIntOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   }
   cg._i64.store(0U, offsetof(Mem, u));
 
-
   // pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
   cg.i32.const_((int)&p->aMem[pOp->p3]);
 
@@ -543,7 +563,6 @@ void genRealOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   }
   cg.f64.store(0U, offsetof(Mem, u));
 
-
   // pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
   cg.i32.const_((int)&p->aMem[pOp->p3]);
 
@@ -557,19 +576,6 @@ void genRealOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.or_();
 
   cg.i32.store16(0U, offsetof(Mem, flags));
-}
-
-static int mostTraced(Vdbe *p, Op *pOp){
-  int mostUsed = -1;
-  int mostUsedValue = 0;
-
-  for (int i = 0; i < 100; i++){
-    if (p->traces[(int) (pOp - p->aOp)][i] > mostUsedValue){
-      mostUsed = i;
-      mostUsedValue = p->traces[(int) (pOp - p->aOp)][i];
-    }
-  }
-  return mostUsed;
 }
 
 void genMathOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
@@ -602,7 +608,6 @@ void genMathOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   }
 
   cg.call_indirect({cg.i32, cg.i32, cg.i32}, {});
-
 }
 
 void genMakeRecord(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
@@ -906,23 +911,24 @@ void genOpAffinity(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 void genOpRealAffinity(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   Mem *pIn1 = &p->aMem[pOp->p1];
 
-  cg.i32.const_((intptr_t) &pIn1->flags);
+  cg.i32.const_((intptr_t)&pIn1->flags);
   cg.i32.load16_u();
-  cg.i32.const_(MEM_Int|MEM_IntReal);
+  cg.i32.const_(MEM_Int | MEM_IntReal);
   cg.i32.and_();
 
-  cg.if_(cg.void_); {
-    cg.i32.const_((intptr_t) &pIn1->u.r);
-    cg.i32.const_((intptr_t) &pIn1->u.i);
+  cg.if_(cg.void_);
+  {
+    cg.i32.const_((intptr_t)&pIn1->u.r);
+    cg.i32.const_((intptr_t)&pIn1->u.i);
     cg._i64.load();
     cg.f64.convert_i64_s();
     cg.f64.store();
 
     // MemSetTypeFlag(pMem, MEM_Real);
-    cg.i32.const_((intptr_t) &pIn1->flags);
-    cg.i32.const_((intptr_t) &pIn1->flags);
+    cg.i32.const_((intptr_t)&pIn1->flags);
+    cg.i32.const_((intptr_t)&pIn1->flags);
     cg.i32.load16_u();
-    cg.i32.const_(~(MEM_TypeMask|MEM_Zero));
+    cg.i32.const_(~(MEM_TypeMask | MEM_Zero));
     cg.i32.and_();
     cg.i32.const_(MEM_Real);
     cg.i32.or_();
