@@ -164,6 +164,7 @@ int execOpRewind(Vdbe *p, Op *pOp) {
   return res;
 }
 
+// __attribute__((optnone)) 
 int execOpColumn(Vdbe *p, Op *pOp) {
   u32 p2;            /* column number to retrieve */
   VdbeCursor *pC;    /* The VDBE cursor */
@@ -191,8 +192,6 @@ op_column_restart:
   aOffset = pC->aOffset;
 
   if (pC->cacheStatus != p->cacheCtr) { /*OPTIMIZATION-IF-FALSE*/
-    // branch 0: pC->cacheStatus != p->cacheCtr
-    p->traces[(int)(pOp - p->aOp)][0]++;
 
     if (pC->nullRow) {
       if (pC->eCurType == CURTYPE_PSEUDO && pC->seekResult > 0) {
@@ -278,8 +277,6 @@ op_column_restart:
   ** parsed and valid information is in aOffset[] and pC->aType[].
   */
   if (pC->nHdrParsed <= p2) {
-    // 2nd branch: pC->nHdrParsed <= p2
-    p->traces[(int)(pOp - p->aOp)][2]++;
 
     /* If there is more header available for parsing in the record, try
     ** to extract additional fields up through the p2+1-th field
@@ -352,8 +349,6 @@ op_column_restart:
       return rc;
     }
   } else {
-    // branch 3: pC->nHdrParsed > p2
-    p->traces[(int)(pOp - p->aOp)][3]++;
     t = pC->aType[p2];
   }
 
@@ -365,9 +360,6 @@ op_column_restart:
   if (VdbeMemDynamic(pDest)) {
     sqlite3VdbeMemSetNull(pDest);
   }
-
-  // branch 4: pC->szRow >= aOffset[p2 + 1]
-  p->traces[(int)(pOp - p->aOp)][4]++;
 
   /* This is the common case where the desired content fits on the original
   ** page - where the content is not on an overflow page */

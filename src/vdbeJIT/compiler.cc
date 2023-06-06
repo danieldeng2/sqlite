@@ -66,21 +66,21 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
       // cg.i32.const_(100000 + i);
       // cg.drop();
     
-      // if (pOp->opcode == OP_Column) {
-      //   printf("OP_ %d: ", (int)(pOp - p->aOp));
-      //   for (int i = 0; i < 10; i++) {
-      //     printf("%d ", p->traces[(int)(pOp - p->aOp)][i]);
-      //   }
-      //   printf("\n");
-      // }
-
-      if (pOp->opcode == OP_Add || pOp->opcode == OP_Multiply || pOp->opcode == OP_Subtract) {
-        printf("Arithmatic %d: ", (int)(pOp - p->aOp));
-        for (int i = 0; i < 100; i++) {
-          if (p->traces[(int)(pOp - p->aOp)][i] != 0) printf("%d:%d ", i, p->traces[(int)(pOp - p->aOp)][i]);
+      if (pOp->opcode == OP_Column) {
+        printf("OP_ %d: ", (int)(pOp - p->aOp));
+        for (int i = 0; i < 30; i++) {
+          if (p->traces[(int)(pOp - p->aOp)][i + 60] != 0) printf("%d,%d:%d ", p->traces[(int)(pOp - p->aOp)][i], p->traces[(int)(pOp - p->aOp)][i + 30], p->traces[(int)(pOp - p->aOp)][i + 60]);
         }
         printf("\n");
       }
+
+      // if (pOp->opcode == OP_Add || pOp->opcode == OP_Multiply || pOp->opcode == OP_Subtract) {
+      //   printf("Arithmatic %d: ", (int)(pOp - p->aOp));
+      //   for (int i = 0; i < 100; i++) {
+      //     if (p->traces[(int)(pOp - p->aOp)][i] != 0) printf("%d:%d ", i, p->traces[(int)(pOp - p->aOp)][i]);
+      //   }
+      //   printf("\n");
+      // }
 
       switch (pOp->opcode) {
         case OP_Noop:
@@ -303,6 +303,7 @@ void traceStatement(Vdbe *p){
 }
 
 WasmModule *jitStatement(Vdbe *p) {
+  sqlite3VdbeReset(p);
   p->isTracing = false;
   std::vector<uint8_t> result = genProgram(p);
   return new WasmModule{result};

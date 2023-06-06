@@ -4316,7 +4316,7 @@ static void vdbeAssertFieldCountWithinLimits(
 ** *pMem2, respectively. Similar in spirit to "rc = (*pMem1) - (*pMem2);".
 */
 
-__attribute__((optnone)) 
+// __attribute__((optnone)) 
 static int vdbeCompareMemString(
   const Mem *pMem1,
   const Mem *pMem2,

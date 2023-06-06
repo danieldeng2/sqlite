@@ -2846,8 +2846,6 @@ op_column_restart:
   assert( pC->eCurType!=CURTYPE_SORTER );
 
   if( pC->cacheStatus!=p->cacheCtr ){                /*OPTIMIZATION-IF-FALSE*/
-    // branch 0: pC->cacheStatus != p->cacheCtr
-    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][0]++;
 
     if( pC->nullRow ){
       if( pC->eCurType==CURTYPE_PSEUDO && pC->seekResult>0 ){
@@ -2941,8 +2939,6 @@ op_column_restart:
   ** parsed and valid information is in aOffset[] and pC->aType[].
   */
   if( pC->nHdrParsed<=p2 ){
-    // 2nd branch: pC->nHdrParsed <= p2
-    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][2]++;
 
     /* If there is more header available for parsing in the record, try
     ** to extract additional fields up through the p2+1-th field 
@@ -3016,9 +3012,6 @@ op_column_restart:
       goto op_column_out;
     }
   }else{
-    // 3nd branch: pC->nHdrParsed > p2
-    if (p->isTracing) p->traces[(int) (pOp - p->aOp)][3]++;
-
     t = pC->aType[p2];
   }
 
@@ -3038,6 +3031,24 @@ op_column_restart:
     /* This is the common case where the desired content fits on the original
     ** page - where the content is not on an overflow page */
     zData = pC->aRow + aOffset[p2];
+
+    if (p->isTracing){
+      int n = 0;
+      int *traces = p->traces[(int) (pOp - p->aOp)];
+
+      while (
+        traces[n] != aOffset[p2] || 
+        traces[n + 30] != t
+      ) {
+        if (traces[n + 60] == 0) break;
+        n++;
+      }
+
+      traces[n] = aOffset[p2];
+      traces[n + 30] = t;
+      traces[n + 60]++;
+    }
+
     if( t<12 ){
       sqlite3VdbeSerialGet(zData, t, pDest);
     }else{
