@@ -2,8 +2,8 @@
 
 #include <stddef.h>
 
-#include "runtime.h"
 #include "inMemorySort.h"
+#include "runtime.h"
 
 #define CURSOR_VALID 0
 
@@ -444,22 +444,68 @@ void genOpFunction(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 
 void genMathOps(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   cg.i32.const_((int)&p->aMem[pOp->p1]);
+  cg.i32.load16_u(0U, offsetof(Mem, flags));
   cg.i32.const_((int)&p->aMem[pOp->p2]);
-  cg.i32.const_((int)&p->aMem[pOp->p3]);
+  cg.i32.load16_u(0U, offsetof(Mem, flags));
+  cg.i32.and_();
+  cg.i32.const_(MEM_Int);
+  cg.i32.and_();
+  cg.if_(cg.void_);
+  {
+    cg.i32.const_((int)&p->aMem[pOp->p3]);
 
-  switch (pOp->opcode) {
-    case OP_Add:
-      cg.i32.const_(reinterpret_cast<intptr_t>(&execOpAdd));
-      break;
-    case OP_Subtract:
-      cg.i32.const_(reinterpret_cast<intptr_t>(&execOpSubtract));
-      break;
-    case OP_Multiply:
-      cg.i32.const_(reinterpret_cast<intptr_t>(&execOpMultiply));
-      break;
+    cg.i32.const_((int)&p->aMem[pOp->p2]);
+    cg._i64.load(0U, offsetof(Mem, u));
+    cg.i32.const_((int)&p->aMem[pOp->p1]);
+    cg._i64.load(0U, offsetof(Mem, u));
+
+    switch (pOp->opcode) {
+      case OP_Add:
+        cg._i64.add();
+        break;
+      case OP_Subtract:
+        cg._i64.sub();
+        break;
+      case OP_Multiply:
+        cg._i64.mul();
+        break;
+    }
+    cg._i64.store(0U, offsetof(Mem, u));
+
+    // pOut->flags = (pOut->flags & ~(MEM_TypeMask | MEM_Zero)) | flag;
+    cg.i32.const_((int)&p->aMem[pOp->p3]);
+
+    cg.i32.const_((int)&p->aMem[pOp->p3]);
+    cg.i32.load16_u(0U, offsetof(Mem, flags));
+
+    cg.i32.const_(~(MEM_TypeMask | MEM_Zero));
+    cg.i32.and_();
+
+    cg.i32.const_(MEM_Int);
+    cg.i32.or_();
+
+    cg.i32.store16(0U, offsetof(Mem, flags));
   }
+  cg.else_();
+  {
+    cg.i32.const_((int)&p->aMem[pOp->p1]);
+    cg.i32.const_((int)&p->aMem[pOp->p2]);
+    cg.i32.const_((int)&p->aMem[pOp->p3]);
 
-  cg.call_indirect({cg.i32, cg.i32, cg.i32}, {});
+    switch (pOp->opcode) {
+      case OP_Add:
+        cg.i32.const_(reinterpret_cast<intptr_t>(&execOpAdd));
+        break;
+      case OP_Subtract:
+        cg.i32.const_(reinterpret_cast<intptr_t>(&execOpSubtract));
+        break;
+      case OP_Multiply:
+        cg.i32.const_(reinterpret_cast<intptr_t>(&execOpMultiply));
+        break;
+    }
+    cg.call_indirect({cg.i32, cg.i32, cg.i32}, {});
+  }
+  cg.end();
 }
 
 void genMakeRecord(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
@@ -763,23 +809,24 @@ void genOpAffinity(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
 void genOpRealAffinity(wasmblr::CodeGenerator &cg, Vdbe *p, Op *pOp) {
   Mem *pIn1 = &p->aMem[pOp->p1];
 
-  cg.i32.const_((intptr_t) &pIn1->flags);
+  cg.i32.const_((intptr_t)&pIn1->flags);
   cg.i32.load16_u();
-  cg.i32.const_(MEM_Int|MEM_IntReal);
+  cg.i32.const_(MEM_Int | MEM_IntReal);
   cg.i32.and_();
 
-  cg.if_(cg.void_); {
-    cg.i32.const_((intptr_t) &pIn1->u.r);
-    cg.i32.const_((intptr_t) &pIn1->u.i);
+  cg.if_(cg.void_);
+  {
+    cg.i32.const_((intptr_t)&pIn1->u.r);
+    cg.i32.const_((intptr_t)&pIn1->u.i);
     cg._i64.load();
     cg.f64.convert_i64_s();
     cg.f64.store();
 
     // MemSetTypeFlag(pMem, MEM_Real);
-    cg.i32.const_((intptr_t) &pIn1->flags);
-    cg.i32.const_((intptr_t) &pIn1->flags);
+    cg.i32.const_((intptr_t)&pIn1->flags);
+    cg.i32.const_((intptr_t)&pIn1->flags);
     cg.i32.load16_u();
-    cg.i32.const_(~(MEM_TypeMask|MEM_Zero));
+    cg.i32.const_(~(MEM_TypeMask | MEM_Zero));
     cg.i32.and_();
     cg.i32.const_(MEM_Real);
     cg.i32.or_();

@@ -96,9 +96,10 @@ class I64 {
   operator uint8_t();
   void const_(int64_t i);
   void add();
+  void sub();
+  void mul();
   void store(uint32_t alignment = 3, uint32_t offset = 0);
   void load(uint32_t alignment = 3, uint32_t offset = 0);
-
  private:
   I64(CodeGenerator& cg_) : cg(cg_) {}
   CodeGenerator& cg;
@@ -142,7 +143,15 @@ class F32 {
 class F64 {
  public:
   operator uint8_t();
+  void eq();
   void ne();
+  void lt();
+  void gt();
+  void le();
+  void ge();
+  void add();
+  void sub();
+  void mul();
   void const_(double f);
   void load(uint32_t alignment = 1, uint32_t offset = 0);
   void store(uint32_t alignment = 1, uint32_t offset = 0);
@@ -634,8 +643,10 @@ STORE_OP(I32, store8, 0x3a);
 STORE_OP(I32, store16, 0x3b);
 
 BINARY_OP(I64, add, 0x7c, _i64, _i64, _i64);
-STORE_OP(I64, store, 0x37);
+BINARY_OP(I64, sub, 0x7d, _i64, _i64, _i64);
+BINARY_OP(I64, mul, 0x7e, _i64, _i64, _i64);
 LOAD_OP(I64, load, 0x29, _i64);
+STORE_OP(I64, store, 0x37);
 
 BINARY_OP(F32, eq, 0x5b, f32, f32, i32);
 BINARY_OP(F32, ne, 0x5c, f32, f32, i32);
@@ -662,7 +673,16 @@ STORE_OP(F32, store, 0x38);
 
 LOAD_OP(F64, load, 0x2b, f64);
 STORE_OP(F64, store, 0x39);
+BINARY_OP(F64, eq, 0x61, f64, f64, i32);
 BINARY_OP(F64, ne, 0x62, f64, f64, i32);
+BINARY_OP(F64, lt, 0x63, f64, f64, i32);
+BINARY_OP(F64, gt, 0x64, f64, f64, i32);
+BINARY_OP(F64, le, 0x65, f64, f64, i32);
+BINARY_OP(F64, ge, 0x66, f64, f64, i32);
+
+BINARY_OP(F64, add, 0xa0, f64, f64, f64);
+BINARY_OP(F64, sub, 0xa1, f64, f64, f64);
+BINARY_OP(F64, mul, 0xa2, f64, f64, f64);
 UNARY_OP(F64, convert_i64_s, 0xb9, _i64, f64);
 
 #undef UNARY_OP
