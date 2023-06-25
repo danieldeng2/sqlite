@@ -76,9 +76,9 @@ static inline void genMainFunction(wasmblr::CodeGenerator &cg, Vdbe *p,
 
       // if (pOp->opcode == OP_Add || pOp->opcode == OP_Multiply || pOp->opcode == OP_Subtract) {
       //   printf("Arithmatic %d: ", (int)(pOp - p->aOp));
-      //   for (int i = 0; i < 100; i++) {
-      //     if (p->traces[(int)(pOp - p->aOp)][i] != 0) printf("%d:%d ", i, p->traces[(int)(pOp - p->aOp)][i]);
-      //   }
+        // for (int i = 0; i < 100; i++) {
+        //   if (p->traces[(int)(pOp - p->aOp)][i] != 0) printf("%d:%d ", i, p->traces[(int)(pOp - p->aOp)][i]);
+        // }
       //   printf("\n");
       // }
 

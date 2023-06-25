@@ -9,7 +9,7 @@ std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
   }
 
   // bool hasOpReturn = false;
-  bool hasOpReturn = true;
+  // bool hasOpReturn = true;
 
   for (int i = 0; i < p->nOp; i++) {
     Op pOp = p->aOp[i];
@@ -22,7 +22,9 @@ std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
         isJumpIn[i + 1] = true;
         break;
       case OP_Return:
-        hasOpReturn = true;
+        for (int j = 0; j < 100; j++) {
+          if (p->traces[i][j] != 0) isJumpIn[j + 1] = true;
+        }
         break;
       case OP_Jump:
         isJumpIn[pOp.p1] = true;
@@ -61,11 +63,11 @@ std::vector<CodeBlock> *getCodeBlocks(Vdbe *p) {
   }
 
   // Op return can jump to arbitrary address, therefore we cannot do analysis
-  if (hasOpReturn) {
-    for (int i = 0; i < p->nOp; i++) {
-      isJumpIn[i] = true;
-    }
-  }
+  // if (hasOpReturn) {
+  //   for (int i = 0; i < p->nOp; i++) {
+  //     isJumpIn[i] = true;
+  //   }
+  // }
 
   std::vector<CodeBlock> *result = new std::vector<CodeBlock>;
   CodeBlock curr;
